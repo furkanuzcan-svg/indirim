@@ -175,8 +175,12 @@ açık sorular). Diğer laptopta yeni oturum açıldığında devam noktası bur
   Kalan 7 site: Trendyol, n11, Teknosa, Hepsiburada, MediaMarkt, Vatan, İdefix.
   Online tablo herkese açık ama link paylaşılmadı (kullanıcı bilinçli olarak böyle bıraktı).
   Git geçmişi kullanıcı onayıyla tek commit'e indirildi (2026-09-16), eski commit'ler GitHub'dan force push ile silindi.
-- **Sıradaki adım:** Birkaç gün veri biriksin; rozetleri (ani düşüş, 30g en düşük, sahte, siteler arası) gerçek
-  veride kontrol et. Açık fikirler: telefon bildirimi (Telegram/ntfy), "ortalamanın %X altında" gösterimi,
+- **Bekleme dönemi (2026-09-16'dan itibaren, kullanıcı kararı):** Veri birikmesi bekleniyor, yeni özellik eklenmiyor.
+  Beklenen takvim: 2-3 gün "ani düşüş", 7 gün (~23 Eylül) "30 günün en düşüğü"/"sahte indirim", 1 ay gerçek 30g en düşük.
+- **Sıradaki adım (~19 Eylül ve ~23 Eylül):** Kullanıcıyla birlikte kontrol: masaüstü log'u
+  (`%LOCALAPPDATA%\indirim\tracker.log`, masaüstünde) ve `docs/deals.json` status alanında 0 ürün / engel var mı;
+  siteler HTML değiştirdi mi; rozetler (ani düşüş, 30g en düşük, sahte, siteler arası) gerçek veride mantıklı mı,
+  yanlış eşleşme var mı. `data/history.json` sadece okunur (laptopta tarama çalıştırma). Açık fikirler: telefon bildirimi (Telegram/ntfy), "ortalamanın %X altında" gösterimi,
   giyim/kozmetik/süpermarket kategorileri (kullanıcı henüz karar vermedi), çoklu alım/birim fiyat.
   Birkaç gün sonra rozetlerin (ani düşüş, 30g en düşük, sahte) gerçek veride mantıklı çalıştığını kontrol et.
   claude.ai/code ile GitHub'dan çalışılırsa değişiklikler Drive'a `git pull` ile gelmeli.
