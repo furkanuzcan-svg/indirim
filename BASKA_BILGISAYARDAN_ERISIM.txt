@@ -1,0 +1,76 @@
+İNDİRİM TAKİPÇİSİ - BAŞKA BİLGİSAYARDAN ERİŞİM
+=============================================
+(Üniversite laptopu, okul laptopu vb.)
+
+Bu dosyayı herhangi bir bilgisayardan okuyabilirsin:
+tarayıcıda drive.google.com > Drive'ım > İndirim > BASKA_BILGISAYARDAN_ERISIM.txt
+
+İki ayrı şey var:
+  A) İndirim tablosunu GÖRMEK
+  B) Claude ile projeye DEVAM ETMEK
+
+Tarama her durumda evdeki masaüstünde çalışmaya devam eder; diğer
+bilgisayarların açık olmasına gerek yoktur.
+
+
+A) İNDİRİM TABLOSUNU GÖRMEK
+---------------------------
+
+YOL 1 - Google Drive for Desktop kurulabiliyorsa (kendi laptopun)
+  1. https://www.google.com/drive/download/ adresinden kur, aynı hesapla gir.
+  2. Dosya Gezgini > Google Drive > Drive'ım > İndirim > docs > index.html
+  3. Çift tıkla. Tablo tarayıcıda açılır, 5 dakikada bir kendini yeniler.
+
+  NOT: drive.google.com web sitesinde index.html'e tıklamak ÇALIŞMAZ;
+  Drive web sitesi HTML sayfalarını çalıştırmaz, sadece kodu gösterir.
+
+YOL 2 - Hiçbir şey kurulamıyorsa (üniversite bilgisayarı, telefon)
+  Tarayıcıda şu linki aç (her cihazdan, telefondan bile):
+      https://furkanuzcan-svg.github.io/indirim/
+  Veri 5 dakikada bir güncellenir (masaüstü açık olduğu sürece).
+  Link çalışmıyorsa: aşağıdaki "ONLINE TABLOYU AÇMAK (BİR KERELİK)" adımlarına bak.
+  NOT: Depo herkese açık; fiyat listesini başkaları da görebilir (kişisel bilgi yok).
+
+
+B) CLAUDE İLE PROJEYE DEVAM ETMEK
+---------------------------------
+Claude'daki sohbet geçmişi her bilgisayarda ayrıdır, başka bilgisayarda
+eski sohbeti göremezsin. Ama Claude nerede kaldığımızı proje klasöründeki
+CLAUDE.md dosyasından okur, o yüzden kaldığın yerden devam edebilirsin.
+
+YOL 1 - Claude uygulaması + Drive kurulabiliyorsa
+  1. Google Drive for Desktop'ı kur (yukarıdaki A / Yol 1).
+  2. Claude uygulamasını kur, aynı Claude hesabıyla gir.
+  3. Code sekmesinde yeni oturum aç, klasör olarak
+     Google Drive > Drive'ım > İndirim klasörünü seç.
+  4. "Kaldığımız yerden devam edelim" yaz.
+  5. Python gerekiyorsa (kodu denemek için) CLAUDE.md'deki "Laptoplar" kurulumunu
+     Claude'a yaptırabilirsin.
+
+YOL 2 - Hiçbir şey kurulamıyorsa
+  Proje kodu GitHub'da: https://github.com/furkanuzcan-svg/indirim
+  claude.ai/code web sitesinden bu depoyu seçerek çalışabilirsin.
+  DİKKAT: Orada yapılan değişiklikler önce GitHub'a gider, Drive'daki klasöre
+  kendiliğinden gelmez. Sonra bir laptopta Claude'a "GitHub'daki değişiklikleri
+  çek (git pull)" demen gerekir. Masaüstü tarama kodunu Drive'dan çalıştırır.
+
+
+ONLINE TABLOYU AÇMAK (BİR KERELİK)
+----------------------------------
+1. GitHub'da (github.com'a giriş yapmış olarak) şu adresi aç:
+     https://github.com/furkanuzcan-svg/indirim/settings/pages
+2. "Build and deployment" > Source: "Deploy from a branch"
+3. Branch: "main", klasör: "/docs" seç, "Save"e bas.
+4. 1-2 dakika bekle, sonra https://furkanuzcan-svg.github.io/indirim/ adresini aç.
+5. Masaüstünde kurulumu BİR KEZ DAHA çalıştır (Git kurar, GitHub girişini yapar,
+   görevleri veriyi GitHub'a gönderecek şekilde günceller):
+     powershell -ExecutionPolicy Bypass -File kurulum_masaustu.ps1
+   Tarayıcıda GitHub giriş penceresi açılırsa giriş yap ve izin ver.
+
+
+ÖNEMLİ
+------
+- Başka bilgisayarlarda TARAMA ÇALIŞTIRMA (python -m tracker.run).
+  Masaüstüyle aynı dosyalara yazar, Drive'da "(1)" çakışma kopyaları oluşur.
+- Aynı anda iki bilgisayarda proje dosyalarını düzenleme; birinde işin
+  bitince Drive senkronunun bitmesini bekle.

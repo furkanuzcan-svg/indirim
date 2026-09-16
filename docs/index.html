@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>İndirim Takip</title>
+<style>
+  :root { --bg:#fafaf9; --fg:#1c1917; --muted:#78716c; --line:#e7e5e4; --good:#15803d; --warn:#b45309; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1c1917; --fg:#f5f5f4; --muted:#a8a29e; --line:#44403c; --good:#4ade80; --warn:#fbbf24; } }
+  body { margin:0; font:14px system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:14px 16px; border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; gap:14px 24px; align-items:center; }
+  h1 { font-size:18px; margin:0; }
+  label { display:flex; gap:6px; align-items:center; color:var(--muted); }
+  label b { color:var(--fg); min-width:5.5em; font-variant-numeric:tabular-nums; }
+  input[type=search] { padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; }
+  select { padding:4px; background:transparent; color:inherit; border:1px solid var(--line); border-radius:6px; }
+  .meta { color:var(--muted); font-size:12px; padding:8px 16px; }
+  .wrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; }
+  th, td { padding:7px 10px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+  th { position:sticky; top:0; background:var(--bg); cursor:pointer; user-select:none; font-weight:600; }
+  td.name { white-space:normal; min-width:260px; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  a { color:inherit; }
+  .pct { font-weight:700; color:var(--good); }
+  .fake { color:var(--warn); font-size:12px; }
+  s { color:var(--muted); }
+  .badge { display:inline-block; font-size:12px; padding:1px 6px; border-radius:10px; margin:1px 2px 1px 0; white-space:nowrap; }
+  .b-drop { background:color-mix(in srgb, var(--good) 18%, transparent); color:var(--good); font-weight:600; }
+  .b-low { background:color-mix(in srgb, var(--good) 10%, transparent); color:var(--good); }
+  .b-fake { background:color-mix(in srgb, var(--warn) 16%, transparent); color:var(--warn); font-weight:600; }
+  .b-new { color:var(--muted); }
+  td.badges { white-space:normal; min-width:140px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>İndirim Takip</h1>
+  <label>Min fiyat <input id="minPrice" type="range" min="0" max="100000" step="500" value="1000"><b id="minPriceV"></b></label>
+  <label>Min indirim <input id="minPct" type="range" min="0" max="90" step="5" value="30"><b id="minPctV"></b></label>
+  <label>İndirim ölçüsü
+    <select id="basis">
+      <option value="site">Sitenin eski fiyatı</option>
+      <option value="avg7">Önceki 7 günün ortalaması</option>
+      <option value="market">Diğer sitelerdeki en ucuz fiyat</option>
+      <option value="history">Son 30 günün en yükseği</option>
+    </select>
+  </label>
+  <label>İşaret
+    <select id="flag">
+      <option value="">Tümü</option>
+      <option value="nofake" selected>Sahte / başka yerde ucuz olanları gizle</option>
+      <option value="drop">Sadece ani düşüş</option>
+      <option value="low">Sadece 30 günün en düşüğü</option>
+    </select>
+  </label>
+  <label>Site <select id="site"><option value="">Tümü</option></select></label>
+  <input id="q" type="search" placeholder="Ürün ara…">
+</header>
+<div class="meta" id="meta">Yükleniyor…</div>
+<div class="wrap">
+<table>
+  <thead><tr>
+    <th data-k="pct">İndirim</th><th data-k="price">Fiyat</th><th data-k="ref">Eski fiyat</th>
+    <th data-k="score">Geçmiş</th>
+    <th data-k="name">Ürün</th><th data-k="site">Site</th><th data-k="first_seen">İlk görülme</th>
+  </tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+</div>
+<script src="deals.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n == null ? "–" : Math.round(n).toLocaleString("tr-TR") + " TL";
+let data = { items: [] }, sortKey = "pct", sortDir = -1;
+
+const store = {
+  get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+for (const id of ["minPrice", "minPct", "basis", "flag"]) {
+  $(id).value = store.get(id, $(id).value);
+  $(id).addEventListener("input", () => { store.set(id, $(id).value); render(); });
+}
+$("site").addEventListener("input", render);
+$("q").addEventListener("input", render);
+document.querySelectorAll("th").forEach(th => th.addEventListener("click", () => {
+  const k = th.dataset.k; sortDir = sortKey === k ? -sortDir : -1; sortKey = k; render();
+}));
+
+// Geçmiş işaretleri (eski deals.json'da alanlar yoksa hiçbiri gösterilmez).
+// Karşılaştırmalar ancak yeterli geçmiş varsa anlamlı: en az 7 gün takip.
+const MIN_DAYS = 7;
+function enrich(it) {
+  const basis = $("basis").value;
+  const ref = basis === "site" ? it.old_price : basis === "avg7" ? it.avg7_prev
+    : basis === "market" ? it.cmp?.price : (it.max30 ?? it.max_seen);
+  const pct = ref && ref > it.price ? (1 - it.price / ref) * 100 : 0;
+  const days = it.tracked_days ?? 0;
+  const enough = days >= MIN_DAYS;
+  // Ani düşüş: fiyat son 2 gün içinde değişmiş ve önceki 7 günün ortalamasından en az %10 aşağıda
+  const recent = it.price_since && Date.parse(data.updated) - Date.parse(it.price_since) <= 2 * 864e5;
+  const dropPct = recent && it.avg7_prev && it.price < it.avg7_prev ? (1 - it.price / it.avg7_prev) * 100 : 0;
+  const drop = dropPct >= 10;
+  // 30 günün en düşüğü: şimdiki fiyat son 30 günün en düşüğü ve fiyat bu sürede hiç değişmemiş değil
+  const low = enough && it.min30 != null && it.price <= it.min30 && it.price < it.max30;
+  // Sahte indirim: sitenin üstü çizili fiyatını son 30 günde hiç görmedik (%5 tolerans)
+  const ownFake = enough && it.old_price && it.max30 && it.old_price > it.max30 * 1.05;
+  // Kendi taradığımız diğer sitelerde aynı ürün (model kodu + çelişmeyen özellikler)
+  const cmp = it.cmp;
+  // Üstü çizili fiyat, diğer sitelerin hiçbirinde görülmeyecek kadar yüksek (%10 tolerans)
+  const cmpInflated = !!cmp && !!it.old_price && it.old_price > cmp.max * 1.10;
+  const fake = ownFake || cmpInflated;
+  const cheaperElsewhere = !!cmp && it.price > cmp.price * 1.03;
+  const cheapestHere = !!cmp && it.price <= cmp.price;
+  // Gerçek fırsat değil: sahte indirim ya da aynı ürün başka yerde zaten daha ucuz
+  const notDeal = fake || cheaperElsewhere;
+  const score = (drop ? 2 + dropPct / 100 : 0) + (low ? 1 : 0) + (cheapestHere ? 1 : 0)
+    - (cheaperElsewhere ? 2 : 0) - (fake ? 3 : 0);
+  return { ...it, ref, pct, days, enough, drop, dropPct, low, fake, ownFake,
+           cmpInflated, cheaperElsewhere, cheapestHere, notDeal, score };
+}
+
+function badges(it) {
+  const b = [];
+  if (it.drop) b.push(`<span class="badge b-drop" title="Önceki 7 günün ortalaması: ${fmt(it.avg7_prev)}">Ani düşüş %${Math.round(it.dropPct)}</span>`);
+  if (it.low) b.push(`<span class="badge b-low" title="Son 30 günün en yükseği: ${fmt(it.max30)}">30 günün en düşüğü</span>`);
+  // Sitenin kendi bildirdiği 30 günlük en düşük (şu an sadece İdefix). Liste fiyatı üzerinden
+  // tutuluyor; sepette indirim hep altında kaldığı için liste fiyatıyla karşılaştırılır.
+  const listPrice = it.old_price ?? it.price;
+  if (it.site_low30 && listPrice < it.site_low30 * 0.99) b.push(`<span class="badge b-low" title="Liste fiyatı ${fmt(listPrice)}; sitenin bildirdiği son 30 günün en düşüğü ${fmt(it.site_low30)}">Sitenin 30 gün en düşüğünün altında</span>`);
+  const cmp = it.cmp;
+  if (cmp) {
+    const tip = `Aynı ürün ${cmp.n} başka sitede de var; en ucuzu ${cmp.site}: ${fmt(cmp.price)} · ${esc(cmp.name)}`;
+    if (it.cheaperElsewhere) b.push(`<a class="badge b-fake" href="${cmp.url}" target="_blank" rel="noopener" title="${tip}">${esc(cmp.site)}'de ${fmt(cmp.price)}</a>`);
+    else if (it.cheapestHere) b.push(`<span class="badge b-low" title="${tip}">${cmp.n + 1} sitenin en ucuzu</span>`);
+    if (it.cmpInflated) b.push(`<span class="badge b-fake" title="Üstü çizili ${fmt(it.old_price)}; diğer sitelerde en yüksek ${fmt(cmp.max)}">Eski fiyat piyasa üstü</span>`);
+  }
+  if (it.ownFake) b.push(`<span class="badge b-fake" title="Üstü çizili ${fmt(it.old_price)}; son 30 günde gördüğümüz en yüksek ${fmt(it.max30)}">Sahte indirim?</span>`);
+  if (!it.enough) b.push(`<span class="badge b-new" title="İşaretler için en az ${MIN_DAYS} günlük geçmiş gerekiyor">${it.days < 1 ? "yeni" : Math.floor(it.days) + " gün"} takip</span>`);
+  return b.join("");
+}
+
+const FLAG = {
+  "": () => true,
+  nofake: it => !it.notDeal,
+  drop: it => it.drop,
+  low: it => it.low,
+};
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function render() {
+  const minPrice = +$("minPrice").value, minPct = +$("minPct").value;
+  const site = $("site").value, q = $("q").value.toLocaleLowerCase("tr"), flag = FLAG[$("flag").value] || FLAG[""];
+  $("minPriceV").textContent = fmt(minPrice);
+  $("minPctV").textContent = "%" + minPct;
+  const rows = data.items.map(enrich).filter(it =>
+    it.price >= minPrice && it.pct >= minPct && (!site || it.site === site) && flag(it) &&
+    (!q || it.name.toLocaleLowerCase("tr").includes(q)));
+  rows.sort((a, b) => (a[sortKey] > b[sortKey] ? 1 : a[sortKey] < b[sortKey] ? -1 : 0) * sortDir);
+  $("rows").innerHTML = rows.map(it => `<tr>
+    <td class="num"><span class="pct">%${Math.round(it.pct)}</span></td>
+    <td class="num">${fmt(it.price)}</td>
+    <td class="num"><s>${fmt(it.ref)}</s></td>
+    <td class="badges">${badges(it)}</td>
+    <td class="name"><a href="${it.url}" target="_blank" rel="noopener">${it.name.replace(/</g, "&lt;")}</a></td>
+    <td>${it.site}</td>
+    <td>${new Date(it.first_seen).toLocaleDateString("tr-TR")}</td>
+  </tr>`).join("");
+  const st = Object.entries(data.status || {}).map(([s, v]) => `${s}: ${v.urun}${v.hatalar.length ? " ⚠" : ""}`).join(" · ");
+  $("meta").textContent = `Son güncelleme: ${data.updated ? new Date(data.updated).toLocaleString("tr-TR") : "–"} · ` +
+    `${rows.length} / ${data.items.length} ürün gösteriliyor · ${st}`;
+}
+
+function load(d) {
+  data = d;
+  [...new Set(d.items.map(i => i.site))].sort().forEach(s => $("site").add(new Option(s, s)));
+  render();
+}
+// Veri kaynağı:
+//  - Drive'dan çift tıklama (file://): deals.js
+//  - GitHub Pages: masaüstünün 5 dk'da bir güncellediği `data` dalı (GitHub API, önbelleksiz)
+//  - localhost: deals.json
+const GH_API = "https://api.github.com/repos/furkanuzcan-svg/indirim/contents/deals.json?ref=data";
+const GH_RAW = "https://raw.githubusercontent.com/furkanuzcan-svg/indirim/data/deals.json";
+const fail = msg => { $("meta").textContent = msg; };
+if (window.DEALS) load(window.DEALS);
+else if (location.hostname.endsWith("github.io")) {
+  fetch(GH_API, { headers: { Accept: "application/vnd.github.raw+json" }, cache: "no-store" })
+    .then(r => { if (!r.ok) throw r.status; return r.json(); })
+    // API sınırı (saatte 60 istek) dolarsa en fazla 5 dk önbellekli raw adresine düş
+    .catch(() => fetch(GH_RAW, { cache: "no-store" }).then(r => { if (!r.ok) throw r.status; return r.json(); }))
+    .then(load).catch(() => fail("Veri alınamadı. Masaüstü çalışıyor mu?"));
+}
+else fetch("deals.json", { cache: "no-store" }).then(r => r.json()).then(load)
+  .catch(() => fail("Veri bulunamadı. Önce tarayıcıyı çalıştırın: python -m tracker.run"));
+// Sayfa açık kalırsa 5 dk'da bir yenile
+setTimeout(() => location.reload(), 5 * 60 * 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.tmp
+.env
+debug/
+# Tarama çıktıları: evdeki masaüstü üretir, Drive ile senkronlanır
+data/
+docs/deals.json
+docs/deals.js
