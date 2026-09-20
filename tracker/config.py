@@ -13,6 +13,9 @@ PRICE_MIN = 5000
 PRICE_MAX = 150000
 
 PAGES_PER_CATEGORY = 3
+# Hızlı tur (5 dk) kategori başına kaç sayfa tarasın (tam tur hepsini tarar).
+# 2 sayfa ~3 dk sürüyor; 5 dakikalık aralığa sığmalı.
+QUICK_PAGES = 2
 
 
 def _pages(url_fmt, first_page):
@@ -125,6 +128,12 @@ SHOW_SEEN_WITHIN_MIN = 150
 # Online tablo: masaüstü (--publish ile) deals.json'u bu deponun bu dalına gönderir.
 PUBLISH_REPO = "https://github.com/furkanuzcan-svg/indirim.git"
 PUBLISH_BRANCH = "data"
+
+# "Fiyat hatası?" işareti (tabloda): normal fiyatı bu tutarın altında olmayan bir ürün,
+# kendi geçmişimizdeki tipik fiyatının bu kadar altına inerse. Ek şartlar tabloda:
+# ilan salınmıyor olmalı ve varsa diğer sitelerin en ucuzunun da belirgin altında olmalı.
+ERROR_MIN_NORMAL_PRICE = 10000
+ERROR_DROP_PCT = 60
 
 # Geçici engelde (tek seferlik 403/503) siteyi atla: ilk engelde 30 dk, her tekrarında
 # iki katı, en fazla 6 saat. Engel kalıcılaşırsa site CATEGORIES'ten çıkarılmalı.

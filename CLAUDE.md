@@ -175,6 +175,24 @@ açık sorular). Diğer laptopta yeni oturum açıldığında devam noktası bur
   Kalan 7 site: Trendyol, n11, Teknosa, Hepsiburada, MediaMarkt, Vatan, İdefix.
   Online tablo herkese açık ama link paylaşılmadı (kullanıcı bilinçli olarak böyle bıraktı).
   Git geçmişi kullanıcı onayıyla tek commit'e indirildi (2026-09-16), eski commit'ler GitHub'dan force push ile silindi.
+- **4 gün sonra kontrol + fiyat hatası avı (2026-09-20):** Masaüstü 4 gündür kesintisiz; 7 sitenin hepsi ürün
+  döndürüyor, engel/0 ürün yok. Geçmişte 8.893 ürün, 3.753'ünün fiyatı değişmiş.
+  - **Veri gürültüsü bulundu:** İdefix'te 8 üründe ilk kayıt 99.000 TL (yer tutucu); 30 üründe salınım
+    (aynı ilanda farklı satıcı/varyant, ör. PS5 Pro 85.999 <-> 45.350); 4 günde 153 kez tek adımda %30+ düşüş.
+  - **Çözümler:** (1) `record_price`: bir fiyat ancak arka arkaya iki taramada aynı görülürse geçmişe yazılır
+    (tek seferlik aksaklıklar elenir, gerçek değişiklik 5 dk gecikir). (2) `clean_history`: ilk nokta sonrakinin
+    1,5 katıysa ve <30 dk sürdüyse atılır (eski 99.000'ler temizlendi). (3) `same_listing`: ilan adı tamamen
+    değişirse geçmiş sıfırlanır. (4) `price_stats.volatile`: son 7 günde tekrar eden değerler + 1,5 kat fark.
+  - **Fiyat hatası kuralı (kullanıcı isteği):** normal fiyatı >= `ERROR_MIN_NORMAL_PRICE` (10.000 TL) olan ürün,
+    tipik fiyatının (avg7_prev, yoksa max30) `ERROR_DROP_PCT` (%60) altına inerse; salınan ilanlar hariç;
+    diğer sitede fiyatı varsa onun da %60'ından ucuz olmalı. Tabloda kırmızı "FİYAT HATASI?" rozeti + filtre.
+    4 günlük veride %60'ta 0 ürün (doğru: gerçek hata olmamış), %50'de 3, %35'te 6 - o 6'sı da site düzeltmesi,
+    gerçek hata değil. Kullanıcı "ürün kaçsın ama yanlış alarm olmasın" dedi -> %60'ta kalındı.
+  - **Kapsam 2 katı:** `QUICK_PAGES = 2` (hızlı turda kategori başına 2 sayfa). Ölçüm: 125 sn, 3.143 tekil ürün
+    (önce ~1.700). 5 dk sınırına sığıyor.
+  - **Tablo varsayılanları değişti:** sıralama "Geçmiş" puanına göre (fiyat hatası > ani düşüş > 30g en düşük >
+    en ucuz), min indirim %30 yerine %0. Sitenin iddia ettiği indirim çoğu gerçek fırsatta %0 olduğu için
+    eski varsayılan iyi fırsatları gizliyordu.
 - **Bekleme dönemi (2026-09-16'dan itibaren, kullanıcı kararı):** Veri birikmesi bekleniyor, yeni özellik eklenmiyor.
   Beklenen takvim: 2-3 gün "ani düşüş", 7 gün (~23 Eylül) "30 günün en düşüğü"/"sahte indirim", 1 ay gerçek 30g en düşük.
 - **Sıradaki adım (~19 Eylül ve ~23 Eylül):** Kullanıcıyla birlikte kontrol: masaüstü log'u

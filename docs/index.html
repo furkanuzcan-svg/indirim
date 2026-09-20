@@ -29,6 +29,7 @@
   .b-drop { background:color-mix(in srgb, var(--good) 18%, transparent); color:var(--good); font-weight:600; }
   .b-low { background:color-mix(in srgb, var(--good) 10%, transparent); color:var(--good); }
   .b-fake { background:color-mix(in srgb, var(--warn) 16%, transparent); color:var(--warn); font-weight:600; }
+  .b-err { background:#dc2626; color:#fff; font-weight:700; }
   .b-new { color:var(--muted); }
   td.badges { white-space:normal; min-width:140px; }
 </style>
@@ -37,7 +38,7 @@
 <header>
   <h1>İndirim Takip</h1>
   <label>Min fiyat <input id="minPrice" type="range" min="0" max="100000" step="500" value="1000"><b id="minPriceV"></b></label>
-  <label>Min indirim <input id="minPct" type="range" min="0" max="90" step="5" value="30"><b id="minPctV"></b></label>
+  <label>Min indirim <input id="minPct" type="range" min="0" max="90" step="5" value="0"><b id="minPctV"></b></label>
   <label>İndirim ölçüsü
     <select id="basis">
       <option value="site">Sitenin eski fiyatı</option>
@@ -50,6 +51,7 @@
     <select id="flag">
       <option value="">Tümü</option>
       <option value="nofake" selected>Sahte / başka yerde ucuz olanları gizle</option>
+      <option value="err">Sadece fiyat hatası şüphesi</option>
       <option value="drop">Sadece ani düşüş</option>
       <option value="low">Sadece 30 günün en düşüğü</option>
     </select>
@@ -72,7 +74,9 @@
 <script>
 const $ = id => document.getElementById(id);
 const fmt = n => n == null ? "–" : Math.round(n).toLocaleString("tr-TR") + " TL";
-let data = { items: [] }, sortKey = "pct", sortDir = -1;
+// Varsayılan sıralama "Geçmiş" puanına göre: sitenin iddia ettiği indirim yerine
+// fiyat hatası şüphesi, ani düşüş ve en ucuz olma önce gelir.
+let data = { items: [] }, sortKey = "score", sortDir = -1;
 
 const store = {
   get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
@@ -114,15 +118,25 @@ function enrich(it) {
   const cheaperElsewhere = !!cmp && it.price > cmp.price * 1.03;
   const cheapestHere = !!cmp && it.price <= cmp.price;
   // Gerçek fırsat değil: sahte indirim ya da aynı ürün başka yerde zaten daha ucuz
+  // Fiyat hatası şüphesi: normalde pahalı bir ürün, kendi geçmişimizdeki tipik fiyatının
+  // çok altına inmiş. Salınan ilanlar (aynı ilanda farklı satıcı/varyant) sayılmaz;
+  // başka sitede fiyatını biliyorsak onun da belirgin altında olmalı.
+  const rules = data.rules || { err_min_price: 10000, err_drop_pct: 60 };
+  const typical = it.avg7_prev ?? it.max30;
+  const priceError = !it.volatile && !!typical && typical >= rules.err_min_price
+    && it.price <= typical * (1 - rules.err_drop_pct / 100)
+    && (!cmp || it.price <= cmp.price * 0.6);
+  const errPct = priceError ? (1 - it.price / typical) * 100 : 0;
   const notDeal = fake || cheaperElsewhere;
-  const score = (drop ? 2 + dropPct / 100 : 0) + (low ? 1 : 0) + (cheapestHere ? 1 : 0)
-    - (cheaperElsewhere ? 2 : 0) - (fake ? 3 : 0);
+  const score = (priceError ? 10 + errPct / 100 : 0) + (drop ? 2 + dropPct / 100 : 0)
+    + (low ? 1 : 0) + (cheapestHere ? 1 : 0) - (cheaperElsewhere ? 2 : 0) - (fake ? 3 : 0);
   return { ...it, ref, pct, days, enough, drop, dropPct, low, fake, ownFake,
-           cmpInflated, cheaperElsewhere, cheapestHere, notDeal, score };
+           cmpInflated, cheaperElsewhere, cheapestHere, priceError, errPct, notDeal, score };
 }
 
 function badges(it) {
   const b = [];
+  if (it.priceError) b.push(`<span class="badge b-err" title="Tipik fiyatı ${fmt(it.avg7_prev ?? it.max30)}; şimdi ${fmt(it.price)}${it.cmp ? ` · diğer sitelerde en ucuz ${fmt(it.cmp.price)}` : ""}">FİYAT HATASI? %${Math.round(it.errPct)}</span>`);
   if (it.drop) b.push(`<span class="badge b-drop" title="Önceki 7 günün ortalaması: ${fmt(it.avg7_prev)}">Ani düşüş %${Math.round(it.dropPct)}</span>`);
   if (it.low) b.push(`<span class="badge b-low" title="Son 30 günün en yükseği: ${fmt(it.max30)}">30 günün en düşüğü</span>`);
   // Sitenin kendi bildirdiği 30 günlük en düşük (şu an sadece İdefix). Liste fiyatı üzerinden
@@ -144,6 +158,7 @@ function badges(it) {
 const FLAG = {
   "": () => true,
   nofake: it => !it.notDeal,
+  err: it => it.priceError,
   drop: it => it.drop,
   low: it => it.low,
 };

@@ -13,6 +13,7 @@ Makineye özel dosyalar (log, kilit, engel durumu) Drive'a değil
 """
 import json
 import os
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -20,7 +21,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import (BLOCK_BACKOFF_MAX_MIN, BLOCK_BACKOFF_MIN, CATEGORIES,
-                     HISTORY_DAYS, REQUEST_DELAY, SHOW_SEEN_WITHIN_MIN)
+                     ERROR_DROP_PCT, ERROR_MIN_NORMAL_PRICE, HISTORY_DAYS,
+                     QUICK_PAGES, REQUEST_DELAY, SHOW_SEEN_WITHIN_MIN)
 from .match import compare_across_sites
 from .sites import PARSERS, Blocked, fetch
 
@@ -88,6 +90,9 @@ def price_stats(prices, now):
     avg7_prev     şimdiki fiyattan hemen önceki 7 günün zamana göre ağırlıklı ortalaması
                   (en az 6 saatlik önceki veri yoksa None)
     price_since   şimdiki fiyatın başladığı zaman
+    volatile      ilan iki fiyat arasında gidip geliyor (aynı ilanda farklı satıcı/varyant
+                  olabilir): son 7 günde tekrar eden değerler ve en az 1,5 kat fark.
+                  Bu ilanlarda düşüş "fiyat hatası" sayılmaz.
     """
     pts = [(datetime.fromisoformat(t), p) for t, p in prices]
     start30 = now - timedelta(days=30)
@@ -101,12 +106,57 @@ def price_stats(prices, now):
         if w > 0:
             total += p * w
             weight += w
+    week = [p for t, p in pts if t >= now - timedelta(days=7)]
+    volatile = (len(week) >= 4 and max(week) >= min(week) * 1.5
+                and len(set(week)) <= len(week) - 2)
     return {
         "tracked_days": round((now - pts[0][0]).total_seconds() / 86400, 1),
         "min30": min(in30), "max30": max(in30),
         "avg7_prev": round(total / weight, 2) if weight >= 6 * 3600 else None,
         "price_since": prices[-1][0],
+        "volatile": volatile,
     }
+
+
+def same_listing(old_name, new_name):
+    """İlan adı tamamen değiştiyse (ürün değişmiş) eski geçmiş kullanılmamalı.
+    Küçük düzenlemeler (büyük harf, ek kelime) geçmişi silmesin diye kelime örtüşmesine bakılır."""
+    words = lambda s: {w for w in re.findall(r"[a-z0-9]+", s.lower()) if len(w) > 2}
+    a, b = words(old_name), words(new_name)
+    return not a or not b or len(a & b) / min(len(a), len(b)) >= 0.5
+
+
+def record_price(h, price, stamp):
+    """Fiyatı geçmişe yazar, ama önce doğrular: bir fiyat ancak arka arkaya iki
+    taramada aynı görülürse kaydedilir. Tek seferlik aksaklıklar (sitenin yer tutucu
+    fiyatı, bizim ayrıştırma hatamız) böylece geçmişi kirletmez; gerçek değişiklik
+    5 dakika gecikmeyle kaydedilir."""
+    prices = h["prices"]
+    if prices and prices[-1][1] == price:
+        h.pop("pending", None)
+        return
+    pending = h.get("pending")
+    if pending and pending[1] == price:
+        prices.append([stamp, price])
+        h.pop("pending", None)
+    else:
+        h["pending"] = [stamp, price]
+
+
+def clean_history(history, now):
+    """Onay kuralından önce kaydedilmiş tek seferlik uç fiyatları temizler:
+    ilk nokta, kendisinden sonraki fiyatın 1,5 katından yüksekse ve 30 dakikadan
+    kısa sürdüyse (ör. İdefix'in 99.000 TL yer tutucusu) atılır."""
+    removed = 0
+    for h in history.values():
+        p = h["prices"]
+        while len(p) >= 2 and p[0][1] >= p[1][1] * 1.5 and \
+                (datetime.fromisoformat(p[1][0]) - datetime.fromisoformat(p[0][0])) <= timedelta(minutes=30):
+            p.pop(0)
+            removed += 1
+        if h.get("pending") and datetime.fromisoformat(h["pending"][0]) < now - timedelta(days=1):
+            h.pop("pending")
+    return removed
 
 
 def back_off(blocked, key, now):
@@ -121,7 +171,7 @@ def scan_site(site, quick):
     parse = PARSERS[site]
     out, errors = [], []
     for category, pages in CATEGORIES[site]:
-        for url in pages[:1] if quick else pages:
+        for url in pages[:QUICK_PAGES] if quick else pages:
             try:
                 out.append((category, parse(fetch(url))))
             except Blocked as e:
@@ -164,11 +214,12 @@ def main(quick):
                 if not p["price"]:
                     continue
                 h = history.setdefault(p["id"], {"prices": []})
+                # Aynı ilan başka bir ürünle değiştiyse eski fiyat geçmişi o ürüne ait değildir
+                if h.get("name") and not same_listing(h["name"], p["name"]):
+                    h["prices"], h["pending"] = [], None
                 h.update(site=site, category=category, name=p["name"], url=p["url"],
                          old_price=p["old_price"], site_low30=p.get("low30"), last_seen=stamp)
-                prices = h["prices"]
-                if not prices or prices[-1][1] != p["price"]:
-                    prices.append([stamp, p["price"]])
+                record_price(h, p["price"], stamp)
                 found.add(p["id"])
 
         if site_blocked:
@@ -180,6 +231,10 @@ def main(quick):
         for e in errors:
             log(f"    {e}")
 
+    removed = clean_history(history, now)
+    if removed:
+        log(f"geçmişten {removed} doğrulanmamış uç fiyat temizlendi")
+
     # Eski kayıtları temizle
     for pid in list(history):
         h = history[pid]
@@ -189,8 +244,8 @@ def main(quick):
 
     deals = []
     for pid, h in history.items():
-        if h["last_seen"] < show_after:
-            continue  # uzun süredir görülmeyen ürün: stokta olmayabilir
+        if h["last_seen"] < show_after or not h["prices"]:
+            continue  # uzun süredir görülmeyen (stokta olmayabilir) ya da fiyatı henüz doğrulanmamış
         seen = [x[1] for x in h["prices"]]
         deals.append({
             "id": pid, "site": h["site"], "category": h["category"], "name": h["name"],
@@ -203,7 +258,9 @@ def main(quick):
     # Aynı ürün başka sitede daha ucuz mu? (kendi verimiz, ek istek yok)
     compare_across_sites(deals)
 
-    out ={"updated": stamp, "mode": "hızlı" if quick else "tam", "status": status, "items": deals}
+    out = {"updated": stamp, "mode": "hızlı" if quick else "tam", "status": status,
+           "rules": {"err_min_price": ERROR_MIN_NORMAL_PRICE, "err_drop_pct": ERROR_DROP_PCT},
+           "items": deals}
     save_json(HISTORY_FILE, history)
     save_json(DEALS_FILE, out)
     DEALS_JS.write_text("window.DEALS=" + json.dumps(out, ensure_ascii=False, separators=(",", ":")) + ";",
