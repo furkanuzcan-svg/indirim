@@ -103,10 +103,18 @@ function enrich(it) {
   const pct = ref && ref > it.price ? (1 - it.price / ref) * 100 : 0;
   const days = it.tracked_days ?? 0;
   const enough = days >= MIN_DAYS;
-  // Ani düşüş: fiyat son 2 gün içinde değişmiş ve önceki 7 günün ortalamasından en az %10 aşağıda
+  // Ani düşüş: fiyat son 2 gün içinde değişmiş ve önceki 7 günün ortalamasından en az %10 aşağıda.
+  // Ek şart: fiyat, bizim gördüğümüz en düşüğe de yakın olmalı. Satıcı önce fiyatı şişirip sonra
+  // eski seviyesine döndürürse ortalama şişer ve gerçek olmayan bir "düşüş" görünür; bu durumda
+  // "eski seviyesine döndü" denir (rebound).
   const recent = it.price_since && Date.parse(data.updated) - Date.parse(it.price_since) <= 2 * 864e5;
   const dropPct = recent && it.avg7_prev && it.price < it.avg7_prev ? (1 - it.price / it.avg7_prev) * 100 : 0;
-  const drop = dropPct >= 10;
+  const atLow = it.min30 == null || it.price <= it.min30 * 1.02;
+  const drop = dropPct >= 10 && atLow;
+  const rebound = dropPct >= 10 && !atLow;
+  // Paket/set ilanı: içeriği değişebilir, başka siteyle fiyat karşılaştırması güvenilir değil
+  // "465 Litre" gibi isimlere takılmamak için "2'li/3'lü" kalıbı kelime sonunda olmalı
+  const bundle = /(\+|hediye|\bset\b|paket|combo|bundle|takım|\d\s*['’]?\s*(li|lı|lu|lü)\b)/i.test(it.name);
   // 30 günün en düşüğü: şimdiki fiyat son 30 günün en düşüğü ve fiyat bu sürede hiç değişmemiş değil
   const low = enough && it.min30 != null && it.price <= it.min30 && it.price < it.max30;
   // Sahte indirim: sitenin üstü çizili fiyatını son 30 günde hiç görmedik (%5 tolerans)
@@ -124,21 +132,23 @@ function enrich(it) {
   // başka sitede fiyatını biliyorsak onun da belirgin altında olmalı.
   const rules = data.rules || { err_min_price: 10000, err_drop_pct: 60 };
   const typical = it.avg7_prev ?? it.max30;
-  const priceError = !it.volatile && !!typical && typical >= rules.err_min_price
+  const priceError = !it.volatile && atLow && !!typical && typical >= rules.err_min_price
     && it.price <= typical * (1 - rules.err_drop_pct / 100)
     && (!cmp || it.price <= cmp.price * 0.6);
   const errPct = priceError ? (1 - it.price / typical) * 100 : 0;
   const notDeal = fake || cheaperElsewhere;
   const score = (priceError ? 10 + errPct / 100 : 0) + (drop ? 2 + dropPct / 100 : 0)
     + (low ? 1 : 0) + (cheapestHere ? 1 : 0) - (cheaperElsewhere ? 2 : 0) - (fake ? 3 : 0);
-  return { ...it, ref, pct, days, enough, drop, dropPct, low, fake, ownFake,
+  return { ...it, ref, pct, days, enough, drop, dropPct, rebound, bundle, low, fake, ownFake,
            cmpInflated, cheaperElsewhere, cheapestHere, priceError, errPct, notDeal, score };
 }
 
 function badges(it) {
   const b = [];
   if (it.priceError) b.push(`<span class="badge b-err" title="Tipik fiyatı ${fmt(it.avg7_prev ?? it.max30)}; şimdi ${fmt(it.price)}${it.cmp ? ` · diğer sitelerde en ucuz ${fmt(it.cmp.price)}` : ""}">FİYAT HATASI? %${Math.round(it.errPct)}</span>`);
-  if (it.drop) b.push(`<span class="badge b-drop" title="Önceki 7 günün ortalaması: ${fmt(it.avg7_prev)}">Ani düşüş %${Math.round(it.dropPct)}</span>`);
+  if (it.drop) b.push(`<span class="badge b-drop" title="Önceki 7 günün ortalaması: ${fmt(it.avg7_prev)} · gördüğümüz en düşük: ${fmt(it.min30)}">Ani düşüş %${Math.round(it.dropPct)}</span>`);
+  if (it.rebound) b.push(`<span class="badge b-new" title="Önce yükselmiş, şimdi geri inmiş. Bu ürünü daha önce ${fmt(it.min30)} fiyatına gördük.">Eski seviyesine döndü</span>`);
+  if (it.bundle) b.push(`<span class="badge b-new" title="Paket/set ilanı: içeriği değişebilir, fiyat karşılaştırması ve düşüş güvenilir olmayabilir">Paket</span>`);
   if (it.low) b.push(`<span class="badge b-low" title="Son 30 günün en yükseği: ${fmt(it.max30)}">30 günün en düşüğü</span>`);
   // Sitenin kendi bildirdiği 30 günlük en düşük (şu an sadece İdefix). Liste fiyatı üzerinden
   // tutuluyor; sepette indirim hep altında kaldığı için liste fiyatıyla karşılaştırılır.

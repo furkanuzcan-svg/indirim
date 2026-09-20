@@ -190,6 +190,13 @@ açık sorular). Diğer laptopta yeni oturum açıldığında devam noktası bur
     gerçek hata değil. Kullanıcı "ürün kaçsın ama yanlış alarm olmasın" dedi -> %60'ta kalındı.
   - **Kapsam 2 katı:** `QUICK_PAGES = 2` (hızlı turda kategori başına 2 sayfa). Ölçüm: 125 sn, 3.143 tekil ürün
     (önce ~1.700). 5 dk sınırına sığıyor.
+  - **"Ani düşüş" denetimi (kullanıcı sordu: bundle mı, satıcı şişirdi mi?):** 27 düşüşün 23'ü aynı zamanda
+    gördüğümüz en düşük fiyattaydı (şişirme numarası bizi kandırmamış), 2'si "geri dönüş" (önce yükselmiş
+    sonra eski seviyesine inmiş; ör. Kärcher SC4 seri 15.569->10.999->15.569->13.019), 1'i paket ilanı.
+    Sadece 3'ü başka siteyle doğrulanabildi (çoğunda model kodu yok).
+    Düzeltmeler: (a) "Ani düşüş" için ek şart `price <= min30*1.02`, değilse "Eski seviyesine döndü" etiketi;
+    aynı şart fiyat hatası kuralına da eklendi. (b) Adında +/set/hediye/paket/2'li geçen ilanlara "Paket"
+    etiketi (içerik değişebilir, karşılaştırma güvenilmez) - "465 Litre" yanlış eşleşmesi \b ile düzeltildi.
   - **Sekmeler (kullanıcı isteği):** İşaret açılır menüsü yerine üstte sekmeler: Fiyat hatası / Ani düşüş /
     30 günün en düşüğü / Gerçek fırsatlar (varsayılan) / Tümü. Her sekmede o an kaç ürün olduğu yazılı;
     "Fiyat hatası" sekmesi doluysa kırmızı yanar. Seçili sekme localStorage'da (`tab`).
