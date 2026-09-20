@@ -190,6 +190,10 @@ açık sorular). Diğer laptopta yeni oturum açıldığında devam noktası bur
     gerçek hata değil. Kullanıcı "ürün kaçsın ama yanlış alarm olmasın" dedi -> %60'ta kalındı.
   - **Kapsam 2 katı:** `QUICK_PAGES = 2` (hızlı turda kategori başına 2 sayfa). Ölçüm: 125 sn, 3.143 tekil ürün
     (önce ~1.700). 5 dk sınırına sığıyor.
+  - **Sekmeler (kullanıcı isteği):** İşaret açılır menüsü yerine üstte sekmeler: Fiyat hatası / Ani düşüş /
+    30 günün en düşüğü / Gerçek fırsatlar (varsayılan) / Tümü. Her sekmede o an kaç ürün olduğu yazılı;
+    "Fiyat hatası" sekmesi doluysa kırmızı yanar. Seçili sekme localStorage'da (`tab`).
+    Sayılar diğer süzgeçlerden (fiyat, arama, site) sonra hesaplanır.
   - **Tablo varsayılanları değişti:** sıralama "Geçmiş" puanına göre (fiyat hatası > ani düşüş > 30g en düşük >
     en ucuz), min indirim %30 yerine %0. Sitenin iddia ettiği indirim çoğu gerçek fırsatta %0 olduğu için
     eski varsayılan iyi fırsatları gizliyordu.

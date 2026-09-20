@@ -32,6 +32,15 @@
   .b-err { background:#dc2626; color:#fff; font-weight:700; }
   .b-new { color:var(--muted); }
   td.badges { white-space:normal; min-width:140px; }
+  .tabs { display:flex; flex-wrap:wrap; gap:4px; padding:8px 16px 0; border-bottom:1px solid var(--line); }
+  .tabs button { font:inherit; color:var(--muted); background:transparent; border:1px solid transparent;
+    border-bottom:none; border-radius:8px 8px 0 0; padding:7px 12px; cursor:pointer; }
+  .tabs button:hover { color:var(--fg); }
+  .tabs button[aria-selected="true"] { color:var(--fg); font-weight:600; border-color:var(--line);
+    background:color-mix(in srgb, var(--fg) 5%, transparent); }
+  .tabs button .n { color:var(--muted); font-weight:400; font-variant-numeric:tabular-nums; }
+  .tabs button.alert[aria-selected="true"], .tabs button.alert:not([data-empty]) { color:#dc2626; font-weight:700; }
+  .tabs button.alert:not([data-empty]) .n { color:#dc2626; }
 </style>
 </head>
 <body>
@@ -47,18 +56,10 @@
       <option value="history">Son 30 günün en yükseği</option>
     </select>
   </label>
-  <label>İşaret
-    <select id="flag">
-      <option value="">Tümü</option>
-      <option value="nofake" selected>Sahte / başka yerde ucuz olanları gizle</option>
-      <option value="err">Sadece fiyat hatası şüphesi</option>
-      <option value="drop">Sadece ani düşüş</option>
-      <option value="low">Sadece 30 günün en düşüğü</option>
-    </select>
-  </label>
   <label>Site <select id="site"><option value="">Tümü</option></select></label>
   <input id="q" type="search" placeholder="Ürün ara…">
 </header>
+<nav class="tabs" id="tabs"></nav>
 <div class="meta" id="meta">Yükleniyor…</div>
 <div class="wrap">
 <table>
@@ -82,7 +83,7 @@ const store = {
   get(k, d) { try { return localStorage.getItem(k) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, v); } catch {} },
 };
-for (const id of ["minPrice", "minPct", "basis", "flag"]) {
+for (const id of ["minPrice", "minPct", "basis"]) {
   $(id).value = store.get(id, $(id).value);
   $(id).addEventListener("input", () => { store.set(id, $(id).value); render(); });
 }
@@ -155,23 +156,43 @@ function badges(it) {
   return b.join("");
 }
 
-const FLAG = {
-  "": () => true,
-  nofake: it => !it.notDeal,
-  err: it => it.priceError,
-  drop: it => it.drop,
-  low: it => it.low,
-};
+// Sekmeler: her biri bir süzgeç. "alert" sekmesi boş değilken kırmızı yanar.
+const TABS = [
+  { id: "err", label: "Fiyat hatası", test: it => it.priceError, alert: true },
+  { id: "drop", label: "Ani düşüş", test: it => it.drop },
+  { id: "low", label: "30 günün en düşüğü", test: it => it.low },
+  { id: "nofake", label: "Gerçek fırsatlar", test: it => !it.notDeal },
+  { id: "", label: "Tümü", test: () => true },
+];
+let tab = store.get("tab", "nofake");
+$("tabs").innerHTML = TABS.map(t =>
+  `<button data-tab="${t.id}" class="${t.alert ? "alert" : ""}" aria-selected="false">${t.label} <span class="n"></span></button>`).join("");
+$("tabs").addEventListener("click", e => {
+  const btn = e.target.closest("button");
+  if (!btn) return;
+  tab = btn.dataset.tab;
+  store.set("tab", tab);
+  render();
+});
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 function render() {
   const minPrice = +$("minPrice").value, minPct = +$("minPct").value;
-  const site = $("site").value, q = $("q").value.toLocaleLowerCase("tr"), flag = FLAG[$("flag").value] || FLAG[""];
+  const site = $("site").value, q = $("q").value.toLocaleLowerCase("tr");
   $("minPriceV").textContent = fmt(minPrice);
   $("minPctV").textContent = "%" + minPct;
-  const rows = data.items.map(enrich).filter(it =>
-    it.price >= minPrice && it.pct >= minPct && (!site || it.site === site) && flag(it) &&
+  // Sekme dışındaki süzgeçler önce uygulanır; sekme sayıları bu listeden çıkar
+  const base = data.items.map(enrich).filter(it =>
+    it.price >= minPrice && it.pct >= minPct && (!site || it.site === site) &&
     (!q || it.name.toLocaleLowerCase("tr").includes(q)));
+  for (const t of TABS) {
+    const btn = $("tabs").querySelector(`[data-tab="${t.id}"]`);
+    const n = base.filter(t.test).length;
+    btn.querySelector(".n").textContent = n;
+    btn.setAttribute("aria-selected", String(t.id === tab));
+    btn.toggleAttribute("data-empty", n === 0);
+  }
+  const rows = base.filter((TABS.find(t => t.id === tab) || TABS.at(-1)).test);
   rows.sort((a, b) => (a[sortKey] > b[sortKey] ? 1 : a[sortKey] < b[sortKey] ? -1 : 0) * sortDir);
   $("rows").innerHTML = rows.map(it => `<tr>
     <td class="num"><span class="pct">%${Math.round(it.pct)}</span></td>
@@ -184,7 +205,8 @@ function render() {
   </tr>`).join("");
   const st = Object.entries(data.status || {}).map(([s, v]) => `${s}: ${v.urun}${v.hatalar.length ? " ⚠" : ""}`).join(" · ");
   $("meta").textContent = `Son güncelleme: ${data.updated ? new Date(data.updated).toLocaleString("tr-TR") : "–"} · ` +
-    `${rows.length} / ${data.items.length} ürün gösteriliyor · ${st}`;
+    `${rows.length} / ${data.items.length} ürün gösteriliyor · ${st}` +
+    (data.rules ? ` · fiyat hatası kuralı: ${fmt(data.rules.err_min_price)} üstü ürün, %${data.rules.err_drop_pct}+ düşüş` : "");
 }
 
 function load(d) {
