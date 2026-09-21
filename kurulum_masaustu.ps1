@@ -8,10 +8,14 @@
 # Not: Bu dosya bilerek sadece ASCII karakter icerir (PowerShell 5.1 BOM'suz
 # UTF-8 dosyalardaki Turkce karakterleri bozuyor).
 
-param([switch]$Kaldir)
+# -Proje: betik Drive disinda bir yerden calistirilacaksa proje klasoru (ornek:
+#   powershell -ExecutionPolicy Bypass -File "$env:TEMP\kurulum_masaustu.ps1" -Proje "G:\Drive'im\Indirim")
+param([switch]$Kaldir, [string]$Proje = $PSScriptRoot)
 
 $ErrorActionPreference = 'Stop'
-$Proje = $PSScriptRoot
+if (-not (Test-Path (Join-Path $Proje 'tracker\run.py'))) {
+    throw "Proje klasoru bulunamadi: $Proje  (-Proje 'G:\...\Indirim' seklinde verin)"
+}
 $Venv = Join-Path $env:USERPROFILE '.venvs\indirim'
 $Py = Join-Path $Venv 'Scripts\python.exe'
 $PyW = Join-Path $Venv 'Scripts\pythonw.exe'
