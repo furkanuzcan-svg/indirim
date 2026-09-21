@@ -23,7 +23,8 @@ from pathlib import Path
 from .config import (BLOCK_BACKOFF_MAX_MIN, BLOCK_BACKOFF_MIN, CATEGORIES,
                      DIP_KEEP_HOURS, ERROR_DROP_PCT, ERROR_MAX_MIN,
                      ERROR_MIN_NORMAL_PRICE, ERROR_RECOVER_PCT, HISTORY_DAYS,
-                     QUICK_PAGES, REQUEST_DELAY, SHOW_SEEN_WITHIN_MIN)
+                     PRICE_MAX, PRICE_MIN, QUICK_PAGES, REQUEST_DELAY,
+                     SHOW_SEEN_WITHIN_MIN)
 from .match import compare_across_sites
 from .sites import PARSERS, Blocked, fetch
 
@@ -255,7 +256,8 @@ def main(quick):
         found = set()  # sayfalarda tekrar eden vitrin ürünleri bir kez sayılsın
         for category, products in pages_products:
             for p in products:
-                if not p["price"]:
+                # Fiyat aralığı: sitenin filtresi robots.txt yüzünden kullanılamadığında burada uygulanır
+                if not p["price"] or not (PRICE_MIN <= p["price"] <= PRICE_MAX):
                     continue
                 h = history.setdefault(p["id"], {"prices": []})
                 # Aynı ilan başka bir ürünle değiştiyse eski fiyat geçmişi o ürüne ait değildir

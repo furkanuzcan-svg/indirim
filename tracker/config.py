@@ -7,8 +7,9 @@ sıralaması; ilk birkaç sayfa taranır. Fiyat filtreleri 2026-09-16'da her sit
 en düşük/en yüksek fiyat kontrol edilerek doğrulandı.
 """
 
-# Taranan fiyat aralığı (TL). Siteler filtreyi indirimsiz fiyata uygulayabilir;
-# indirimle PRICE_MIN altına düşen ürünler de listede kalır (bu istenen durum).
+# Taranan fiyat aralığı (TL). Sitenin kendi fiyat filtresi ancak robots.txt izin veriyorsa
+# adreste kullanılır (Trendyol, n11, Vatan); diğerlerinde filtresiz sayfa taranıp aralık
+# kendi tarafımızda uygulanır (bkz. run.py). Aralık dışı ürünler kaydedilmez.
 PRICE_MIN = 5000
 PRICE_MAX = 150000
 
@@ -50,8 +51,8 @@ CATEGORIES = {
         ("Oyun", "video-oyun-konsol/playstation-5"),
         ("Beyaz Eşya", "beyaz-esya"),
     ]),
-    # s=:bestSellerPoint-desc:priceValue:min-max (SAP Hybris sorgusu), sayfa page=0'dan
-    "teknosa": _site("https://www.teknosa.com/{path}?s=%3AbestSellerPoint-desc%3ApriceValue%3A{lo}-{hi}&page={p}", 0, [
+    # Not: Teknosa robots.txt "*s=*" adreslerini botlara kapatmış -> filtresiz sayfa kullanılıyor
+    "teknosa": _site("https://www.teknosa.com/{path}?page={p}", 0, [
         ("Elektronik", "laptop-notebook-c-116004"),
         ("Elektronik", "televizyonlar-c-101001"),
         ("Elektronik", "tablet-c-116012"),
@@ -59,9 +60,8 @@ CATEGORIES = {
         ("Ev Aletleri", "dikey-supurge-c-117005001"),
         ("Ev Aletleri", "klima-c-117007002"),
     ]),
-    # varsayılan (önerilen) sıralama, filtreler=fiyat:min-max, sayfa=N (1'den); 36 ürün/sayfa
-    # ("fiyat=min-max" biçimi ÇALIŞMIYOR)
-    "hepsiburada": _site("https://www.hepsiburada.com/{path}?filtreler=fiyat:{lo}-{hi}&sayfa={p}", 1, [
+    # Not: Hepsiburada robots.txt "?filtreler=..." adreslerini kapatmış -> filtresiz sayfa
+    "hepsiburada": _site("https://www.hepsiburada.com/{path}?sayfa={p}", 1, [
         ("Elektronik", "laptop-notebook-dizustu-bilgisayarlar-c-98"),
         ("Elektronik", "oyuncu-laptoplari-c-95583"),
         ("Elektronik", "cep-telefonlari-c-371965"),
@@ -76,8 +76,8 @@ CATEGORIES = {
         ("Ev Aletleri", "supurgeler-c-155123"),
         ("Ev Aletleri", "klimalar-c-17453"),
     ]),
-    # varsayılan sıralama, filter=currentprice:min-max, page=N (1'den); 12 ürün/sayfa
-    "mediamarkt": _site("https://www.mediamarkt.com.tr/tr/category/{path}.html?filter=currentprice:{lo}-{hi}&page={p}", 1, [
+    # Not: MediaMarkt robots.txt "?filter=" ve "*sort=" adreslerini kapatmış -> filtresiz sayfa
+    "mediamarkt": _site("https://www.mediamarkt.com.tr/tr/category/{path}.html?page={p}", 1, [
         ("Elektronik", "laptop-504926"),
         ("Elektronik", "cep-telefonlari-504171"),
         ("Elektronik", "akilli-saatler-862018"),
@@ -103,8 +103,8 @@ CATEGORIES = {
         ("Ev Aletleri", "kahve-makinesi"),
         ("Ev Aletleri", "klima"),
     ]),
-    # siralama=desc_score_best_selling, fiyat=min-max, sayfa=N (1'den); 24 grup/sayfa (varyantlar ayrı ürün)
-    "idefix": _site("https://www.idefix.com/{path}?siralama=desc_score_best_selling&fiyat={lo}-{hi}&sayfa={p}", 1, [
+    # Not: İdefix robots.txt "*?siralama" adreslerini kapatmış -> filtresiz sayfa (varyantlar ayrı ürün)
+    "idefix": _site("https://www.idefix.com/{path}?sayfa={p}", 1, [
         ("Elektronik", "cep-telefonu-c-2313571270"),
         ("Elektronik", "bilgisayar-ve-tablet-c-2302"),
         ("Elektronik", "televizyon-c-2314109670"),
