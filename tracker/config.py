@@ -129,11 +129,15 @@ SHOW_SEEN_WITHIN_MIN = 150
 PUBLISH_REPO = "https://github.com/furkanuzcan-svg/indirim.git"
 PUBLISH_BRANCH = "data"
 
-# "Fiyat hatası?" işareti (tabloda): normal fiyatı bu tutarın altında olmayan bir ürün,
-# kendi geçmişimizdeki tipik fiyatının bu kadar altına inerse. Ek şartlar tabloda:
-# ilan salınmıyor olmalı ve varsa diğer sitelerin en ucuzunun da belirgin altında olmalı.
+# Fiyat hatası avı: normal fiyatı ERROR_MIN_NORMAL_PRICE altında olmayan bir ürünün fiyatı
+# ERROR_DROP_PCT kadar düşerse "düşüş" kaydı açılır (data/dips.json). Gerçek fiyat hatası
+# kısa sürer: fiyat ERROR_MAX_MIN içinde eski seviyesinin ERROR_RECOVER_PCT'ine dönerse
+# "doğrulanmış fiyat hatası" sayılır. Kalıcı düşüşler normal indirimdir, hata sayılmaz.
 ERROR_MIN_NORMAL_PRICE = 10000
 ERROR_DROP_PCT = 60
+ERROR_RECOVER_PCT = 85
+ERROR_MAX_MIN = 20
+DIP_KEEP_HOURS = 48
 
 # Geçici engelde (tek seferlik 403/503) siteyi atla: ilk engelde 30 dk, her tekrarında
 # iki katı, en fazla 6 saat. Engel kalıcılaşırsa site CATEGORIES'ten çıkarılmalı.

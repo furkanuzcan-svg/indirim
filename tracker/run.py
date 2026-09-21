@@ -21,13 +21,15 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .config import (BLOCK_BACKOFF_MAX_MIN, BLOCK_BACKOFF_MIN, CATEGORIES,
-                     ERROR_DROP_PCT, ERROR_MIN_NORMAL_PRICE, HISTORY_DAYS,
+                     DIP_KEEP_HOURS, ERROR_DROP_PCT, ERROR_MAX_MIN,
+                     ERROR_MIN_NORMAL_PRICE, ERROR_RECOVER_PCT, HISTORY_DAYS,
                      QUICK_PAGES, REQUEST_DELAY, SHOW_SEEN_WITHIN_MIN)
 from .match import compare_across_sites
 from .sites import PARSERS, Blocked, fetch
 
 ROOT = Path(__file__).resolve().parent.parent
 HISTORY_FILE = ROOT / "data" / "history.json"
+DIPS_FILE = ROOT / "data" / "dips.json"  # kısa süreli fiyat düşüşleri (fiyat hatası avı)
 DEALS_FILE = ROOT / "docs" / "deals.json"
 DEALS_JS = ROOT / "docs" / "deals.js"  # index.html'in dosyadan (file://) açılabilmesi için
 
@@ -118,6 +120,43 @@ def price_stats(prices, now):
     }
 
 
+def track_dip(dips, pid, raw_price, typical, stamp, now):
+    """Fiyat hatası avı. Ham gözlemle (geçmişe yazılmadan önce) çalışır, çünkü gerçek
+    hatalar 5-20 dakikada düzeltilir ve iki taramalık doğrulamaya yetişmez.
+
+    Fiyat, tipik fiyatın ERROR_DROP_PCT altına inince kayıt açılır; ERROR_MAX_MIN içinde
+    eski seviyesine (ERROR_RECOVER_PCT) dönerse "doğrulanmış fiyat hatası" olur.
+    Dönmezse kalıcı indirimdir (hata değil)."""
+    if not typical or typical < ERROR_MIN_NORMAL_PRICE:
+        return
+    dip = dips.get(pid)
+    if raw_price <= typical * (1 - ERROR_DROP_PCT / 100):
+        if dip and dip.get("permanent") and dip["typical"] == typical and abs(raw_price - dip["low"]) <= dip["low"] * 0.05:
+            return  # kalıcı indirim olarak kapatılmıştı, aynı seviyede yeniden açma
+        if not dip or dip.get("recovered"):
+            dips[pid] = {"typical": typical, "low": raw_price, "start": stamp, "last": stamp}
+        else:
+            dip["low"] = min(dip["low"], raw_price)
+            dip["last"] = stamp
+            minutes = round((datetime.fromisoformat(stamp) - datetime.fromisoformat(dip["start"])).total_seconds() / 60)
+            if minutes > ERROR_MAX_MIN * 3:
+                # uzun süredir düşük: hata değil, kalıcı indirim (geçmiş de bunu onaylayacak)
+                dip.update(recovered=stamp, minutes=minutes, confirmed=False, permanent=True)
+    elif dip and not dip.get("recovered"):
+        minutes = round((datetime.fromisoformat(stamp) - datetime.fromisoformat(dip["start"])).total_seconds() / 60)
+        if raw_price >= dip["typical"] * ERROR_RECOVER_PCT / 100:
+            dip.update(recovered=stamp, minutes=minutes, confirmed=minutes <= ERROR_MAX_MIN)
+        elif minutes > ERROR_MAX_MIN * 3:
+            # ne eski seviyesine döndü ne de hata sayılacak kadar kısa sürdü: kalıcı indirim
+            dip.update(recovered=stamp, minutes=minutes, confirmed=False)
+
+
+def clean_dips(dips, now):
+    limit = (now - timedelta(hours=DIP_KEEP_HOURS)).isoformat(timespec="minutes")
+    for pid in [k for k, v in dips.items() if v["start"] < limit]:
+        del dips[pid]
+
+
 def same_listing(old_name, new_name):
     """İlan adı tamamen değiştiyse (ürün değişmiş) eski geçmiş kullanılmamalı.
     Küçük düzenlemeler (büyük harf, ek kelime) geçmişi silmesin diye kelime örtüşmesine bakılır."""
@@ -150,6 +189,10 @@ def clean_history(history, now):
     removed = 0
     for h in history.values():
         p = h["prices"]
+        # İdefix'in 99.000 TL yer tutucusu (bkz. sites.parse_idefix); eski kayıtlarda kalmış olabilir
+        if h.get("site") == "idefix" and any(x[1] == 99000 for x in p):
+            h["prices"] = p = [x for x in p if x[1] != 99000]
+            removed += 1
         while len(p) >= 2 and p[0][1] >= p[1][1] * 1.5 and \
                 (datetime.fromisoformat(p[1][0]) - datetime.fromisoformat(p[0][0])) <= timedelta(minutes=30):
             p.pop(0)
@@ -189,6 +232,7 @@ def main(quick):
     cutoff = (now - timedelta(days=HISTORY_DAYS)).isoformat(timespec="minutes")
     show_after = (now - timedelta(minutes=SHOW_SEEN_WITHIN_MIN)).isoformat(timespec="minutes")
     history = load_json(HISTORY_FILE, {})
+    dips = load_json(DIPS_FILE, {})
     blocked = load_json(BLOCK_FILE, {})
     status = {}
     log(f"--- {'hızlı' if quick else 'tam'} tur başladı")
@@ -219,6 +263,9 @@ def main(quick):
                     h["prices"], h["pending"] = [], None
                 h.update(site=site, category=category, name=p["name"], url=p["url"],
                          old_price=p["old_price"], site_low30=p.get("low30"), last_seen=stamp)
+                # Fiyat hatası avı ham fiyatla çalışır (doğrulama beklemez)
+                track_dip(dips, p["id"], p["price"],
+                          h["prices"][-1][1] if h["prices"] else None, stamp, now)
                 record_price(h, p["price"], stamp)
                 found.add(p["id"])
 
@@ -231,6 +278,11 @@ def main(quick):
         for e in errors:
             log(f"    {e}")
 
+    clean_dips(dips, now)
+    n_conf = sum(1 for v in dips.values() if v.get("confirmed"))
+    n_open = sum(1 for v in dips.values() if not v.get("recovered"))
+    if n_conf or n_open:
+        log(f"fiyat düşüşü izleme: {n_open} açık, {n_conf} doğrulanmış hata (son {DIP_KEEP_HOURS} saat)")
     removed = clean_history(history, now)
     if removed:
         log(f"geçmişten {removed} doğrulanmamış uç fiyat temizlendi")
@@ -254,14 +306,17 @@ def main(quick):
             "max_seen": max(seen), "min_seen": min(seen),
             "first_seen": h["prices"][0][0], "last_seen": h["last_seen"],
             **price_stats(h["prices"], now),
+            "dip": dips.get(pid),
         })
     # Aynı ürün başka sitede daha ucuz mu? (kendi verimiz, ek istek yok)
     compare_across_sites(deals)
 
     out = {"updated": stamp, "mode": "hızlı" if quick else "tam", "status": status,
-           "rules": {"err_min_price": ERROR_MIN_NORMAL_PRICE, "err_drop_pct": ERROR_DROP_PCT},
+           "rules": {"err_min_price": ERROR_MIN_NORMAL_PRICE, "err_drop_pct": ERROR_DROP_PCT,
+                     "err_recover_pct": ERROR_RECOVER_PCT, "err_max_min": ERROR_MAX_MIN},
            "items": deals}
     save_json(HISTORY_FILE, history)
+    save_json(DIPS_FILE, dips)
     save_json(DEALS_FILE, out)
     DEALS_JS.write_text("window.DEALS=" + json.dumps(out, ensure_ascii=False, separators=(",", ":")) + ";",
                         encoding="utf-8")

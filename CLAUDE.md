@@ -197,6 +197,19 @@ açık sorular). Diğer laptopta yeni oturum açıldığında devam noktası bur
     Düzeltmeler: (a) "Ani düşüş" için ek şart `price <= min30*1.02`, değilse "Eski seviyesine döndü" etiketi;
     aynı şart fiyat hatası kuralına da eklendi. (b) Adında +/set/hediye/paket/2'li geçen ilanlara "Paket"
     etiketi (içerik değişebilir, karşılaştırma güvenilmez) - "465 Litre" yanlış eşleşmesi \b ile düzeltildi.
+- **Fiyat hatası kuralı değişti (2026-09-21, kullanıcı isteği):** Eski kural tek bir düşük gözlemi hata sayıyordu
+  ve yanlış alarm verdi (İdefix'te 16 Eylül'de 99.000 TL yer tutucusu 4 gün kaldı, 20 Eylül'de gerçek fiyat
+  33.660 gelince "%66 hata" göründü). Yeni tanım: **fiyat düşecek ve kısa sürede eski seviyesine dönecek.**
+  - `track_dip` (run.py) ham fiyatla çalışır (iki taramalık doğrulamayı beklemez, hatalar 5-20 dk sürüyor).
+    Tipik fiyat = son onaylanmış fiyat. Düşüş kaydı `data/dips.json`.
+  - `ERROR_RECOVER_PCT` (85) içinde `ERROR_MAX_MIN` (20 dk) dönerse `confirmed=True` (doğrulanmış hata);
+    daha geç dönerse confirmed=False; 60 dk'dan uzun sürerse `permanent=True` (kalıcı indirim, hata değil)
+    ve aynı seviyede yeniden kayıt açılmaz. Kayıtlar `DIP_KEEP_HOURS` (48) sonra silinir.
+  - Tabloda: devam eden düşüş "ŞU AN DÜŞÜK · izleniyor" (skor 20, en üstte), dönmüş olan "FİYAT HATASI ✓ %X · N dk".
+    "Fiyat hatası" sekmesi ikisini de gösterir.
+  - **İdefix 99.000 TL yer tutucusu** artık ayrıştırıcıda atlanıyor; `clean_history` eski kayıtları da siliyor.
+  - Birim testler: 5 dk'da dönen = hata, 25 dk'da dönen = hata değil, 60+ dk düşük kalan = kalıcı indirim.
+  - **Not:** Doğrulanmış hata ancak olay bittikten sonra görünür. Yakalamak için "izleniyor" durumu + bildirim gerekir.
   - **Sekmeler (kullanıcı isteği):** İşaret açılır menüsü yerine üstte sekmeler: Fiyat hatası / Ani düşüş /
     30 günün en düşüğü / Gerçek fırsatlar (varsayılan) / Tümü. Her sekmede o an kaç ürün olduğu yazılı;
     "Fiyat hatası" sekmesi doluysa kırmızı yanar. Seçili sekme localStorage'da (`tab`).

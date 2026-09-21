@@ -127,25 +127,25 @@ function enrich(it) {
   const cheaperElsewhere = !!cmp && it.price > cmp.price * 1.03;
   const cheapestHere = !!cmp && it.price <= cmp.price;
   // Gerçek fırsat değil: sahte indirim ya da aynı ürün başka yerde zaten daha ucuz
-  // Fiyat hatası şüphesi: normalde pahalı bir ürün, kendi geçmişimizdeki tipik fiyatının
-  // çok altına inmiş. Salınan ilanlar (aynı ilanda farklı satıcı/varyant) sayılmaz;
-  // başka sitede fiyatını biliyorsak onun da belirgin altında olmalı.
-  const rules = data.rules || { err_min_price: 10000, err_drop_pct: 60 };
-  const typical = it.avg7_prev ?? it.max30;
-  const priceError = !it.volatile && atLow && !!typical && typical >= rules.err_min_price
-    && it.price <= typical * (1 - rules.err_drop_pct / 100)
-    && (!cmp || it.price <= cmp.price * 0.6);
-  const errPct = priceError ? (1 - it.price / typical) * 100 : 0;
+  // Fiyat hatası: tarayıcı ham fiyatlarla kısa süreli düşüşleri izliyor (dip).
+  // Gerçek hata kısa sürer ve fiyat eski seviyesine döner -> dip.confirmed.
+  // Düşüş sürüyorsa (henüz dönmedi) "izleniyor" denir; kalıcı düşüş hata değil, indirimdir.
+  const rules = data.rules || { err_min_price: 10000, err_drop_pct: 60, err_max_min: 20 };
+  const dip = it.dip && !it.volatile ? it.dip : null;
+  const priceError = !!dip && dip.confirmed === true;
+  const dipOpen = !!dip && !dip.recovered;
+  const errPct = dip ? (1 - dip.low / dip.typical) * 100 : 0;
   const notDeal = fake || cheaperElsewhere;
-  const score = (priceError ? 10 + errPct / 100 : 0) + (drop ? 2 + dropPct / 100 : 0)
+  const score = (dipOpen ? 20 : 0) + (priceError ? 10 + errPct / 100 : 0) + (drop ? 2 + dropPct / 100 : 0)
     + (low ? 1 : 0) + (cheapestHere ? 1 : 0) - (cheaperElsewhere ? 2 : 0) - (fake ? 3 : 0);
   return { ...it, ref, pct, days, enough, drop, dropPct, rebound, bundle, low, fake, ownFake,
-           cmpInflated, cheaperElsewhere, cheapestHere, priceError, errPct, notDeal, score };
+           cmpInflated, cheaperElsewhere, cheapestHere, priceError, dipOpen, errPct, notDeal, score };
 }
 
 function badges(it) {
   const b = [];
-  if (it.priceError) b.push(`<span class="badge b-err" title="Tipik fiyatı ${fmt(it.avg7_prev ?? it.max30)}; şimdi ${fmt(it.price)}${it.cmp ? ` · diğer sitelerde en ucuz ${fmt(it.cmp.price)}` : ""}">FİYAT HATASI? %${Math.round(it.errPct)}</span>`);
+  if (it.dipOpen) b.push(`<span class="badge b-err" title="Fiyat ${fmt(it.dip.typical)} iken ${fmt(it.dip.low)} oldu (${new Date(it.dip.start).toLocaleString("tr-TR")}); henüz eski seviyesine dönmedi">ŞU AN DÜŞÜK %${Math.round(it.errPct)} · izleniyor</span>`);
+  else if (it.priceError) b.push(`<span class="badge b-err" title="Fiyat ${fmt(it.dip.typical)} iken ${fmt(it.dip.low)} oldu ve ${it.dip.minutes} dakika sonra eski seviyesine döndü (${new Date(it.dip.start).toLocaleString("tr-TR")})">FİYAT HATASI ✓ %${Math.round(it.errPct)} · ${it.dip.minutes} dk</span>`);
   if (it.drop) b.push(`<span class="badge b-drop" title="Önceki 7 günün ortalaması: ${fmt(it.avg7_prev)} · gördüğümüz en düşük: ${fmt(it.min30)}">Ani düşüş %${Math.round(it.dropPct)}</span>`);
   if (it.rebound) b.push(`<span class="badge b-new" title="Önce yükselmiş, şimdi geri inmiş. Bu ürünü daha önce ${fmt(it.min30)} fiyatına gördük.">Eski seviyesine döndü</span>`);
   if (it.bundle) b.push(`<span class="badge b-new" title="Paket/set ilanı: içeriği değişebilir, fiyat karşılaştırması ve düşüş güvenilir olmayabilir">Paket</span>`);
@@ -168,7 +168,7 @@ function badges(it) {
 
 // Sekmeler: her biri bir süzgeç. "alert" sekmesi boş değilken kırmızı yanar.
 const TABS = [
-  { id: "err", label: "Fiyat hatası", test: it => it.priceError, alert: true },
+  { id: "err", label: "Fiyat hatası", test: it => it.priceError || it.dipOpen, alert: true },
   { id: "drop", label: "Ani düşüş", test: it => it.drop },
   { id: "low", label: "30 günün en düşüğü", test: it => it.low },
   { id: "nofake", label: "Gerçek fırsatlar", test: it => !it.notDeal },
@@ -216,7 +216,7 @@ function render() {
   const st = Object.entries(data.status || {}).map(([s, v]) => `${s}: ${v.urun}${v.hatalar.length ? " ⚠" : ""}`).join(" · ");
   $("meta").textContent = `Son güncelleme: ${data.updated ? new Date(data.updated).toLocaleString("tr-TR") : "–"} · ` +
     `${rows.length} / ${data.items.length} ürün gösteriliyor · ${st}` +
-    (data.rules ? ` · fiyat hatası kuralı: ${fmt(data.rules.err_min_price)} üstü ürün, %${data.rules.err_drop_pct}+ düşüş` : "");
+    (data.rules ? ` · fiyat hatası kuralı: ${fmt(data.rules.err_min_price)} üstü ürün, %${data.rules.err_drop_pct}+ düşüp ${data.rules.err_max_min} dk içinde eski fiyatına dönerse` : "");
 }
 
 function load(d) {

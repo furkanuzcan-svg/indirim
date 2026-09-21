@@ -232,6 +232,9 @@ def parse_idefix(html):
         for v in g.get("variants") or []:
             if not v.get("isSalable", True) or not v.get("price") or not v.get("handleUrl"):
                 continue
+            # İdefix, geçici olarak satılamayan ürünlere 99.000 TL yer tutucusu koyuyor
+            if float(v["price"]) == 99000:
+                continue
             list_price = float(v["price"])
             sale = float(v.get("discountedSalesPrice") or list_price)
             price = min(sale, list_price)
