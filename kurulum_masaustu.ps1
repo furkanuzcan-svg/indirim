@@ -86,9 +86,27 @@ $Ayar = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvai
     -RestartCount 99 -RestartInterval (New-TimeSpan -Minutes 5) `
     -ExecutionTimeLimit ([TimeSpan]::Zero)
 $Eylem = New-ScheduledTaskAction -Execute $PyW -Argument '-m tracker.run --loop --publish' -WorkingDirectory $Proje
-$Tetik = @((New-ScheduledTaskTrigger -AtLogOn), (New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1))))
-Register-ScheduledTask -TaskName 'Indirim Takip Dongu' -Action $Eylem -Trigger $Tetik -Settings $Ayar -Force | Out-Null
-Write-Host "   'Indirim Takip Dongu' kaydedildi (oturum acilinca baslar, surekli calisir)"
+# Tekrarlayan tetik: gorev zaten calisiyorsa yeni kopya baslatilmaz (MultipleInstances IgnoreNew),
+# durmussa 5 dk icinde yeniden baslar. Yeniden baslatmada/oturum acmada da bu tetik devreye girer.
+$Tetikler = @(New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) `
+    -RepetitionInterval (New-TimeSpan -Minutes 5))
+# "Oturum acilinca" tetigi KULLANICI BELIRTILEREK eklenir; kullanici belirtilmezse
+# Windows bunu tum kullanicilar icin sayar ve yonetici ister (HRESULT 0x80070005).
+try {
+    $Tetikler += New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+} catch {
+    Write-Host '   (oturum acilis tetigi eklenemedi, tekrarlayan tetik yeterli)'
+}
+try {
+    Register-ScheduledTask -TaskName 'Indirim Takip Dongu' -Action $Eylem -Trigger $Tetikler `
+        -Settings $Ayar -User $env:USERNAME -RunLevel Limited -Force | Out-Null
+} catch {
+    Write-Host '   oturum acilis tetigi olmadan tekrar deneniyor...'
+    Register-ScheduledTask -TaskName 'Indirim Takip Dongu' -Action $Eylem `
+        -Trigger $Tetikler[0] -Settings $Ayar -Force | Out-Null
+}
+Start-ScheduledTask -TaskName 'Indirim Takip Dongu' -ErrorAction SilentlyContinue
+Write-Host "   'Indirim Takip Dongu' kaydedildi ve baslatildi (surekli calisir)"
 
 $Log = Join-Path $env:LOCALAPPDATA 'indirim\tracker.log'
 Write-Host ''
