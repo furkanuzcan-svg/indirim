@@ -132,20 +132,33 @@ function enrich(it) {
   // Düşüş sürüyorsa (henüz dönmedi) "izleniyor" denir; kalıcı düşüş hata değil, indirimdir.
   const rules = data.rules || { err_min_price: 10000, err_drop_pct: 60, err_max_min: 20 };
   const dip = it.dip && !it.volatile ? it.dip : null;
-  const priceError = !!dip && dip.confirmed === true;
-  const dipOpen = !!dip && !dip.recovered;
   const errPct = dip ? (1 - dip.low / dip.typical) * 100 : 0;
+  // Piyasa doğrulaması: düşük fiyat, aynı ürünün DİĞER SİTELERDEKİ ORTALAMASINA göre de
+  // aynı oranda aşağıda mı? Eşleşme yoksa doğrulayamayız (hata "doğrulanmamış" kalır).
+  const marketPct = dip && cmp?.avg ? (1 - dip.low / cmp.avg) * 100 : null;
+  const marketOk = marketPct != null && marketPct >= rules.err_drop_pct;
+  const dipOpen = !!dip && !dip.recovered && marketOk;
+  const priceError = !!dip && dip.confirmed === true && marketOk;
+  const dipUnverified = !!dip && (dip.confirmed === true || !dip.recovered) && !marketOk;
   const notDeal = fake || cheaperElsewhere;
   const score = (dipOpen ? 20 : 0) + (priceError ? 10 + errPct / 100 : 0) + (drop ? 2 + dropPct / 100 : 0)
     + (low ? 1 : 0) + (cheapestHere ? 1 : 0) - (cheaperElsewhere ? 2 : 0) - (fake ? 3 : 0);
   return { ...it, ref, pct, days, enough, drop, dropPct, rebound, bundle, low, fake, ownFake,
-           cmpInflated, cheaperElsewhere, cheapestHere, priceError, dipOpen, errPct, notDeal, score };
+           cmpInflated, cheaperElsewhere, cheapestHere, priceError, dipOpen, dipUnverified,
+           errPct, marketPct, notDeal, score };
 }
 
 function badges(it) {
   const b = [];
-  if (it.dipOpen) b.push(`<span class="badge b-err" title="Fiyat ${fmt(it.dip.typical)} iken ${fmt(it.dip.low)} oldu (${new Date(it.dip.start).toLocaleString("tr-TR")}); henüz eski seviyesine dönmedi">ŞU AN DÜŞÜK %${Math.round(it.errPct)} · izleniyor</span>`);
-  else if (it.priceError) b.push(`<span class="badge b-err" title="Fiyat ${fmt(it.dip.typical)} iken ${fmt(it.dip.low)} oldu ve ${it.dip.minutes} dakika sonra eski seviyesine döndü (${new Date(it.dip.start).toLocaleString("tr-TR")})">FİYAT HATASI ✓ %${Math.round(it.errPct)} · ${it.dip.minutes} dk</span>`);
+  if (it.dip) {
+    const d = it.dip;
+    const tip = `Fiyat ${fmt(d.typical)} iken ${fmt(d.low)} oldu (${new Date(d.start).toLocaleString("tr-TR")})` +
+      (it.marketPct != null ? ` · diğer sitelerin ortalaması ${fmt(it.cmp.avg)} (${it.cmp.n} site), ona göre %${Math.round(it.marketPct)} düşük`
+        : " · aynı ürün başka sitede bulunamadı, piyasa doğrulaması yok");
+    if (it.dipOpen) b.push(`<span class="badge b-err" title="${tip}">ŞU AN DÜŞÜK %${Math.round(it.errPct)} · piyasa ✓</span>`);
+    else if (it.priceError) b.push(`<span class="badge b-err" title="${tip} · ${d.minutes} dk sonra eski fiyatına döndü">FİYAT HATASI ✓ %${Math.round(it.errPct)} · ${d.minutes} dk</span>`);
+    else if (it.dipUnverified) b.push(`<span class="badge b-fake" title="${tip}">Düşük fiyat · piyasa doğrulanmadı</span>`);
+  }
   if (it.drop) b.push(`<span class="badge b-drop" title="Önceki 7 günün ortalaması: ${fmt(it.avg7_prev)} · gördüğümüz en düşük: ${fmt(it.min30)}">Ani düşüş %${Math.round(it.dropPct)}</span>`);
   if (it.rebound) b.push(`<span class="badge b-new" title="Önce yükselmiş, şimdi geri inmiş. Bu ürünü daha önce ${fmt(it.min30)} fiyatına gördük.">Eski seviyesine döndü</span>`);
   if (it.bundle) b.push(`<span class="badge b-new" title="Paket/set ilanı: içeriği değişebilir, fiyat karşılaştırması ve düşüş güvenilir olmayabilir">Paket</span>`);
@@ -168,7 +181,7 @@ function badges(it) {
 
 // Sekmeler: her biri bir süzgeç. "alert" sekmesi boş değilken kırmızı yanar.
 const TABS = [
-  { id: "err", label: "Fiyat hatası", test: it => it.priceError || it.dipOpen, alert: true },
+  { id: "err", label: "Fiyat hatası", test: it => it.priceError || it.dipOpen || it.dipUnverified, alert: true },
   { id: "drop", label: "Ani düşüş", test: it => it.drop },
   { id: "low", label: "30 günün en düşüğü", test: it => it.low },
   { id: "nofake", label: "Gerçek fırsatlar", test: it => !it.notDeal },

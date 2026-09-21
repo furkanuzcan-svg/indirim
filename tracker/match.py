@@ -60,6 +60,11 @@ def specs(name):
     }
 
 
+def typical(item):
+    """Ürünün olağan fiyatı: geçmişteki ortalama/en yüksek varsa o, yoksa anlık fiyat."""
+    return item.get("avg7_prev") or item.get("max30") or item["price"]
+
+
 def compatible(a, b):
     return all(not (a[k] and b[k] and a[k] != b[k]) for k in a)
 
@@ -67,7 +72,8 @@ def compatible(a, b):
 def compare_across_sites(items):
     """items: tablo ürünleri (site, name, price, url). Her ürüne, başka sitelerde
     eşleşen en ucuz ilanı `cmp` olarak ekler:
-    {site, price, url, name, n (eşleşen site sayısı), max (diğer sitelerdeki en yüksek fiyat)}."""
+    {site, price (en ucuzu), url, name, n (eşleşen site sayısı),
+     max (diğer sitelerdeki en yüksek), avg (diğer sitelerdeki ortalama - fiyat hatası doğrulaması bunu kullanır)}."""
     info = {id(it): (strong_codes(it["name"]), specs(it["name"])) for it in items}
     by_code = defaultdict(list)
     for it in items:
@@ -76,7 +82,7 @@ def compare_across_sites(items):
     for it in items:
         codes, sp = info[id(it)]
         best, top, sites = None, 0, set()
-        seen = set()
+        seen, others = set(), []
         for c in codes:
             for other in by_code[c]:
                 if other is it or other["site"] == it["site"] or id(other) in seen:
@@ -85,14 +91,18 @@ def compare_across_sites(items):
                 if not compatible(sp, info[id(other)][1]):
                     continue
                 # Aynı ürün büyük mağazalarda yarı fiyatına pek satılmaz; bu kadar fark
-                # büyük ihtimalle yanlış eşleşme (ör. ortak bir teknik kod)
-                lo, hi = sorted((it["price"], other["price"]))
+                # büyük ihtimalle yanlış eşleşme (ör. ortak bir teknik kod).
+                # Karşılaştırma ANLIK fiyatla değil TİPİK fiyatla yapılır: fiyat hatası olan
+                # ürün o an piyasanın çok altındadır, yine de aynı üründür.
+                lo, hi = sorted((typical(it), typical(other)))
                 if lo < hi * 0.5:
                     continue
                 sites.add(other["site"])
                 top = max(top, other["price"])
+                others.append(other["price"])
                 if best is None or other["price"] < best["price"]:
                     best = other
         it["cmp"] = ({"site": best["site"], "price": best["price"], "url": best["url"],
-                      "name": best["name"], "n": len(sites), "max": top} if best else None)
+                      "name": best["name"], "n": len(sites), "max": top,
+                      "avg": round(sum(others) / len(others), 2)} if best else None)
     return items

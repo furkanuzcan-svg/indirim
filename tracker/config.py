@@ -139,6 +139,12 @@ ERROR_RECOVER_PCT = 85
 ERROR_MAX_MIN = 20
 DIP_KEEP_HOURS = 48
 
+# Sürekli döngü (`--loop`): tur biter bitmez yenisi başlar. Fiyat hataları dakikalar içinde
+# düzeltildiği için kontrol aralığı ne kadar kısaysa yakalama şansı o kadar yüksek.
+LOOP_PAUSE_SEC = 10        # turlar arası nefes payı
+LOOP_FULL_MIN = 60         # bu kadar dakikada bir tam tur (tüm sayfalar)
+LOOP_PUBLISH_MIN = 5       # GitHub'a en fazla bu sıklıkta gönder
+
 # Geçici engelde (tek seferlik 403/503) siteyi atla: ilk engelde 30 dk, her tekrarında
 # iki katı, en fazla 6 saat. Engel kalıcılaşırsa site CATEGORIES'ten çıkarılmalı.
 BLOCK_BACKOFF_MIN = 30

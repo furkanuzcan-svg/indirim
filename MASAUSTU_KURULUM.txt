@@ -21,7 +21,9 @@ tarayıcıda drive.google.com > Drive'ım > İndirim > MASAUSTU_KURULUM.txt
        powershell -ExecutionPolicy Bypass -File kurulum_masaustu.ps1
 
    - 3-5 dakika sürer: Python ve Git kurulur, bir deneme taraması yapılır,
-     veri GitHub'a gönderilir, zamanlanmış görevler kaydedilir.
+     veri GitHub'a gönderilir, sürekli çalışan tarama görevi kaydedilir.
+     (Eski 5 dakikalık iki görev varsa kaldırılır; artık tek görev sürekli çalışıyor:
+     tur biter bitmez yenisi başlıyor, yaklaşık 2 dakikada bir kontrol.)
    - Git kurulurken yönetici izni penceresi, GitHub'a ilk gönderimde de
      tarayıcıda GitHub giriş penceresi açılabilir: izin ver / giriş yap.
    - Daha önce kurduysan da tekrar çalıştırmak sorun değil (günceller).
@@ -45,7 +47,9 @@ KURULUMDAN SONRA
 - Tablo: İndirim klasöründeki docs\index.html dosyasına çift tıkla.
   Üstte "Son güncelleme" saati 5 dakikadan eski olmamalı.
   Bu dosyayı laptoplardan da açabilirsin (Drive ile güncellenir).
-- Tarama: 5 dakikada bir hızlı tur, saatte bir tam tur.
+- Tarama: sürekli döngü (~2 dakikada bir hızlı tur), saatte bir tam tur,
+  5 dakikada bir GitHub'a gönderim.
+- Görev sürekli çalıştığı için Görev Zamanlayıcı'da "Çalışıyor" görünür, bu normaldir.
 - Sorun olursa log dosyası (masaüstünde):
   %LOCALAPPDATA%\indirim\tracker.log
   (Dosya Gezgini adres çubuğuna bu yolu yapıştırabilirsin.)

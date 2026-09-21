@@ -15,7 +15,8 @@ $Proje = $PSScriptRoot
 $Venv = Join-Path $env:USERPROFILE '.venvs\indirim'
 $Py = Join-Path $Venv 'Scripts\python.exe'
 $PyW = Join-Path $Venv 'Scripts\pythonw.exe'
-$Gorevler = @('Indirim Hizli Tur', 'Indirim Tam Tur')
+# 'Indirim Hizli Tur' / 'Indirim Tam Tur': eski (5 dk'lik) gorevler, artik surekli dongu kullaniliyor
+$Gorevler = @('Indirim Hizli Tur', 'Indirim Tam Tur', 'Indirim Takip Dongu')
 
 if ($Kaldir) {
     foreach ($g in $Gorevler) {
@@ -67,21 +68,23 @@ Push-Location $Proje
 try { & $Py -m tracker.run --publish-only } finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { throw 'GitHub a gonderim basarisiz, yukaridaki ciktiya bak' }
 
-# 5) Zamanlanmis gorevler (sadece bu kullanici oturum acikken calisir; ekran kilitli olabilir)
-Write-Host '5/5 Zamanlanmis gorevler kaydediliyor...'
+# 5) Surekli calisan tek gorev (oturum acikken; ekran kilitli olabilir).
+# Tur biter bitmez yenisi baslar (~2 dk), saatte bir tam tur, 5 dk'da bir GitHub'a gonderim.
+Write-Host '5/5 Surekli tarama gorevi kaydediliyor...'
+foreach ($g in @('Indirim Hizli Tur', 'Indirim Tam Tur')) {
+    if (Get-ScheduledTask -TaskName $g -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $g -Confirm:$false
+        Write-Host "   eski gorev kaldirildi: $g"
+    }
+}
 $Ayar = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable `
     -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 30)
-
-function Kaydet($Ad, $Arguman, $Dakika, $Gecikme) {
-    $Eylem = New-ScheduledTaskAction -Execute $PyW -Argument $Arguman -WorkingDirectory $Proje
-    $Tetik = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes($Gecikme)) `
-        -RepetitionInterval (New-TimeSpan -Minutes $Dakika)
-    Register-ScheduledTask -TaskName $Ad -Action $Eylem -Trigger $Tetik -Settings $Ayar -Force | Out-Null
-    Write-Host "   '$Ad' her $Dakika dakikada bir"
-}
-Kaydet 'Indirim Hizli Tur' '-m tracker.run --quick --publish' 5 2
-Kaydet 'Indirim Tam Tur' '-m tracker.run --publish' 60 7
+    -RestartCount 99 -RestartInterval (New-TimeSpan -Minutes 5) `
+    -ExecutionTimeLimit ([TimeSpan]::Zero)
+$Eylem = New-ScheduledTaskAction -Execute $PyW -Argument '-m tracker.run --loop --publish' -WorkingDirectory $Proje
+$Tetik = @((New-ScheduledTaskTrigger -AtLogOn), (New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1))))
+Register-ScheduledTask -TaskName 'Indirim Takip Dongu' -Action $Eylem -Trigger $Tetik -Settings $Ayar -Force | Out-Null
+Write-Host "   'Indirim Takip Dongu' kaydedildi (oturum acilinca baslar, surekli calisir)"
 
 $Log = Join-Path $env:LOCALAPPDATA 'indirim\tracker.log'
 Write-Host ''

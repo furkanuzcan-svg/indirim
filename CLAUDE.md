@@ -197,6 +197,24 @@ açık sorular). Diğer laptopta yeni oturum açıldığında devam noktası bur
     Düzeltmeler: (a) "Ani düşüş" için ek şart `price <= min30*1.02`, değilse "Eski seviyesine döndü" etiketi;
     aynı şart fiyat hatası kuralına da eklendi. (b) Adında +/set/hediye/paket/2'li geçen ilanlara "Paket"
     etiketi (içerik değişebilir, karşılaştırma güvenilmez) - "465 Litre" yanlış eşleşmesi \b ile düzeltildi.
+- **robots.txt uyumu (2026-09-21, ÖNEMLİ):** Denetimde 78 adresimizin sitelerin robots.txt'sinde botlara
+  kapalı olduğu görüldü: Teknosa `*s=*`, Hepsiburada `?filtreler=`, MediaMarkt `?filter=`/`*sort=`,
+  İdefix `*?siralama`. (İdefix'in 20 Eylül'de bizi engellemesi muhtemelen bundandı; düzeltince açıldı.)
+  Artık filtresiz kategori sayfaları taranıyor (`?sayfa=N` / `?page=N`), fiyat aralığı run.py'de uygulanıyor.
+  Trendyol (sst/prc), n11 (minp/maxp) ve Vatan (min/max) adresleri robots'a göre serbest, aynen kaldı.
+  **Yeni site/kategori eklerken `python -m tracker.robots` çalıştır** (tüm adresleri kurallara göre denetler).
+  Ölçüm: 123 sn'lik hızlı tur, 2.909 ürün, medyan 27.000 TL.
+- **Sürekli döngü (2026-09-21):** `python -m tracker.run --loop --publish`: tur biter bitmez yenisi başlar
+  (~2 dk), `LOOP_FULL_MIN` (60 dk) bir tam tur, `LOOP_PUBLISH_MIN` (5 dk) bir GitHub gönderimi.
+  Masaüstünde iki zamanlanmış görev yerine tek görev: "Indirim Takip Dongu" (oturum açılınca başlar,
+  sürekli çalışır, hata olursa 5 dk'da bir yeniden başlar). Kurulum betiği eski görevleri kaldırıyor.
+  **Kullanıcı masaüstünde `kurulum_masaustu.ps1`'i tekrar çalıştırmalı.**
+  Hız planı (kullanıcı onayı ile kademeli): 1) sürekli döngü ~2 dk, 2) engel yoksa QUICK_PAGES=1 (~70 sn),
+  3) hâlâ temizse sadece pahalı kategoriler (~45 sn).
+- **Fiyat hatası piyasa doğrulaması (2026-09-21, kullanıcı isteği):** Düşüş artık diğer sitelerin
+  **ortalamasıyla** doğrulanıyor: `cmp.avg` (match.py) eklendi; düşük fiyat bu ortalamanın da
+  `ERROR_DROP_PCT` kadar altında olmalı. Eşleşme yoksa "Düşük fiyat · piyasa doğrulanmadı" etiketi
+  (turuncu), doğrulanırsa "ŞU AN DÜŞÜK · piyasa ✓" (kırmızı) ya da "FİYAT HATASI ✓ %X · N dk".
 - **Fiyat hatası kuralı değişti (2026-09-21, kullanıcı isteği):** Eski kural tek bir düşük gözlemi hata sayıyordu
   ve yanlış alarm verdi (İdefix'te 16 Eylül'de 99.000 TL yer tutucusu 4 gün kaldı, 20 Eylül'de gerçek fiyat
   33.660 gelince "%66 hata" göründü). Yeni tanım: **fiyat düşecek ve kısa sürede eski seviyesine dönecek.**

@@ -2,7 +2,8 @@
 
 Çalıştırma (proje kökünden):
     python -m tracker.run            tam tur (tüm sayfalar)
-    python -m tracker.run --quick    hızlı tur (her kategorinin 1. sayfası)
+    python -m tracker.run --quick    hızlı tur (her kategorinin ilk sayfaları)
+    python -m tracker.run --loop     sürekli döngü: tur biter bitmez yenisi (saatte bir tam tur)
     ... --publish                    sonunda deals.json'u GitHub'a gönder (sadece masaüstü)
     python -m tracker.run --publish-only   taramadan sadece gönder (kurulum testi)
 Tek sayfa ayrıştırıcı testi:
@@ -23,8 +24,8 @@ from pathlib import Path
 from .config import (BLOCK_BACKOFF_MAX_MIN, BLOCK_BACKOFF_MIN, CATEGORIES,
                      DIP_KEEP_HOURS, ERROR_DROP_PCT, ERROR_MAX_MIN,
                      ERROR_MIN_NORMAL_PRICE, ERROR_RECOVER_PCT, HISTORY_DAYS,
-                     PRICE_MAX, PRICE_MIN, QUICK_PAGES, REQUEST_DELAY,
-                     SHOW_SEEN_WITHIN_MIN)
+                     LOOP_FULL_MIN, LOOP_PAUSE_SEC, LOOP_PUBLISH_MIN, PRICE_MAX,
+                     PRICE_MIN, QUICK_PAGES, REQUEST_DELAY, SHOW_SEEN_WITHIN_MIN)
 from .match import compare_across_sites
 from .sites import PARSERS, Blocked, fetch
 
@@ -326,6 +327,38 @@ def main(quick):
     log(f"Toplam {len(deals)} ürün yazıldı")
 
 
+def publish_deals():
+    try:
+        from .publish import publish
+        publish(DEALS_FILE, LOCAL_DIR)
+        log("GitHub'a gönderildi")
+        return True
+    except Exception as e:  # internet/GitHub sorunu taramayı bozmasın
+        log(f"GitHub'a gönderilemedi: {e}")
+        return False
+
+
+def loop(publish_enabled):
+    """Sürekli döngü: hızlı turlar art arda, LOOP_FULL_MIN'de bir tam tur.
+    Tek bir kilitle çalışır; Görev Zamanlayıcı'ya tek bir 'oturum açılınca başlat' görevi yeter."""
+    log(f"döngü başladı (tam tur {LOOP_FULL_MIN} dk'da bir, yayın {LOOP_PUBLISH_MIN} dk'da bir)")
+    last_full = last_publish = 0.0
+    while True:
+        started = time.time()
+        full = (started - last_full) / 60 >= LOOP_FULL_MIN
+        try:
+            main(quick=not full)
+            if full:
+                last_full = started
+            if publish_enabled and (started - last_publish) / 60 >= LOOP_PUBLISH_MIN and publish_deals():
+                last_publish = started
+        except Exception as e:  # tek turun hatası döngüyü durdurmasın
+            log(f"tur hatası: {type(e).__name__}: {e}")
+            time.sleep(60)
+        log(f"tur {time.time() - started:.0f} sn sürdü")
+        time.sleep(LOOP_PAUSE_SEC)
+
+
 def test(site, html_file):
     html = Path(html_file).read_text(encoding="utf-8", errors="replace")
     items = PARSERS[site](html)
@@ -347,14 +380,14 @@ if __name__ == "__main__":
         log("Başka bir tur hâlâ çalışıyor, bu tur atlandı")
         sys.exit()
     try:
-        main(quick="--quick" in sys.argv)
-        if "--publish" in sys.argv:
-            try:
-                from .publish import publish
-                publish(DEALS_FILE, LOCAL_DIR)
-                log("GitHub'a gönderildi")
-            except Exception as e:  # internet/GitHub sorunu taramayı bozmasın
-                log(f"GitHub'a gönderilemedi: {e}")
+        if "--loop" in sys.argv:
+            loop(publish_enabled="--publish" in sys.argv)
+        else:
+            main(quick="--quick" in sys.argv)
+            if "--publish" in sys.argv:
+                publish_deals()
+    except KeyboardInterrupt:
+        log("durduruldu")
     except Exception as e:
         log(f"HATA: {type(e).__name__}: {e}")
         raise
