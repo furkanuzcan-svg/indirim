@@ -39,7 +39,7 @@ LOCAL_DIR = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "indirim"
 LOG_FILE = LOCAL_DIR / "tracker.log"
 LOCK_FILE = LOCAL_DIR / "run.lock"
 BLOCK_FILE = LOCAL_DIR / "blocked.json"
-LOCK_STALE_MIN = 30
+LOCK_STALE_MIN = 15  # döngü her turda kilidi tazeler; bu süre en uzun turdan (tam tur ~4 dk) uzun olmalı
 
 
 def log(msg):
@@ -69,20 +69,30 @@ def save_json(path, obj):
     tmp.replace(path)
 
 
-def acquire_lock():
-    """Hızlı ve tam tur aynı anda çalışmasın. Takılı kalmış kilit 30 dk sonra geçersiz."""
+def acquire_lock(wait=False):
+    """İki tur aynı anda çalışmasın. Çalışan tur kilidi her turda tazeler; LOCK_STALE_MIN
+    boyunca tazelenmemiş kilit (çöken/öldürülen tur) geçersiz sayılır.
+    wait=True (döngü modu): kilit boşalana kadar bekler, çıkmaz."""
     LOCAL_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        fd = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        os.write(fd, str(os.getpid()).encode())
-        os.close(fd)
-        return True
-    except FileExistsError:
-        age_min = (time.time() - LOCK_FILE.stat().st_mtime) / 60
-        if age_min > LOCK_STALE_MIN:
-            LOCK_FILE.unlink(missing_ok=True)
-            return acquire_lock()
-        return False
+    waited = False
+    while True:
+        try:
+            fd = os.open(LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode())
+            os.close(fd)
+            return True
+        except FileExistsError:
+            age_min = (time.time() - LOCK_FILE.stat().st_mtime) / 60
+            if age_min > LOCK_STALE_MIN:
+                log(f"eski kilit temizlendi ({age_min:.0f} dk tazelenmemiş)")
+                LOCK_FILE.unlink(missing_ok=True)
+                continue
+            if not wait:
+                return False
+            if not waited:
+                log(f"başka bir tur çalışıyor, kilit boşalınca başlayacak ({LOCK_STALE_MIN - age_min:.0f} dk içinde)")
+                waited = True
+            time.sleep(30)
 
 
 def price_stats(prices, now):
@@ -345,6 +355,7 @@ def loop(publish_enabled):
     last_full = last_publish = 0.0
     while True:
         started = time.time()
+        LOCK_FILE.touch()  # kilit taze kalsın, başka bir kopya "çökmüş" sanıp devralmasın
         full = (started - last_full) / 60 >= LOOP_FULL_MIN
         try:
             main(quick=not full)
@@ -376,7 +387,7 @@ if __name__ == "__main__":
         publish(DEALS_FILE, LOCAL_DIR, interactive=True)
         log("GitHub'a gönderildi")
         sys.exit()
-    if not acquire_lock():
+    if not acquire_lock(wait="--loop" in sys.argv):
         log("Başka bir tur hâlâ çalışıyor, bu tur atlandı")
         sys.exit()
     try:
