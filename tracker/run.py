@@ -105,8 +105,10 @@ def price_stats(prices, now):
                   (en az 6 saatlik önceki veri yoksa None)
     price_since   şimdiki fiyatın başladığı zaman
     volatile      ilan iki fiyat arasında gidip geliyor (aynı ilanda farklı satıcı/varyant
-                  olabilir): son 7 günde tekrar eden değerler ve en az 1,5 kat fark.
-                  Bu ilanlarda düşüş "fiyat hatası" sayılmaz.
+                  olabilir, ör. Trendyol'da farklı mağazalar). İki ölçüt:
+                  (a) son 7 günde tekrar eden değerler + en az 1,5 kat fark, ya da
+                  (b) ardışık fiyatlar arasında en az iki kez 1,5 kat sıçrama.
+                  Bu ilanlarda düşüş ne "ani düşüş" ne de "fiyat hatası" sayılır.
     """
     pts = [(datetime.fromisoformat(t), p) for t, p in prices]
     start30 = now - timedelta(days=30)
@@ -121,8 +123,9 @@ def price_stats(prices, now):
             total += p * w
             weight += w
     week = [p for t, p in pts if t >= now - timedelta(days=7)]
-    volatile = (len(week) >= 4 and max(week) >= min(week) * 1.5
-                and len(set(week)) <= len(week) - 2)
+    jumps = sum(1 for a, b in zip(week, week[1:]) if max(a, b) >= min(a, b) * 1.5)
+    volatile = jumps >= 2 or (len(week) >= 4 and max(week) >= min(week) * 1.5
+                              and len(set(week)) <= len(week) - 2)
     return {
         "tracked_days": round((now - pts[0][0]).total_seconds() / 86400, 1),
         "min30": min(in30), "max30": max(in30),
