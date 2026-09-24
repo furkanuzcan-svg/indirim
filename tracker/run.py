@@ -25,7 +25,8 @@ from .config import (BLOCK_BACKOFF_MAX_MIN, BLOCK_BACKOFF_MIN, CATEGORIES,
                      DIP_KEEP_HOURS, ERROR_DROP_PCT, ERROR_MAX_MIN,
                      ERROR_MIN_NORMAL_PRICE, ERROR_RECOVER_PCT, HISTORY_DAYS,
                      LOOP_FULL_MIN, LOOP_PAUSE_SEC, LOOP_PUBLISH_MIN, PRICE_MAX,
-                     PRICE_MIN, QUICK_PAGES, REQUEST_DELAY, SHOW_SEEN_WITHIN_MIN)
+                     PRICE_MIN, QUICK_PAGES, REQUEST_DELAY, SHOW_SEEN_WITHIN_MIN,
+                     SITE_PACE)
 from .match import compare_across_sites
 from .sites import PARSERS, Blocked, fetch
 
@@ -227,6 +228,7 @@ def back_off(blocked, key, now):
 def scan_site(site, quick):
     """Bir sitenin sayfalarını sırayla indirir. -> ([(kategori, ürünler)], hatalar, engellendi_mi)"""
     parse = PARSERS[site]
+    delay = SITE_PACE.get(site, {}).get("delay", REQUEST_DELAY)
     out, errors = [], []
     for category, pages in CATEGORIES[site]:
         for url in pages[:QUICK_PAGES] if quick else pages:
@@ -237,11 +239,11 @@ def scan_site(site, quick):
                 return out, errors, True  # engelleyen siteye istek atmaya devam etme
             except Exception as e:  # ayrıştırıcı hatası diğer sayfaları durdurmasın
                 errors.append(f"{url}: {type(e).__name__}: {e}")
-            time.sleep(REQUEST_DELAY)
+            time.sleep(delay)
     return out, errors, False
 
 
-def main(quick):
+def main(quick, cycle=0):
     now = datetime.now(timezone.utc)
     stamp = now.isoformat(timespec="minutes")
     cutoff = (now - timedelta(days=HISTORY_DAYS)).isoformat(timespec="minutes")
@@ -257,6 +259,9 @@ def main(quick):
     # parçacığında güncellenir.
     active = {}
     for site in CATEGORIES:
+        every = SITE_PACE.get(site, {}).get("every", 1)
+        if quick and every > 1 and cycle % every:
+            continue  # sık engelleyen site: her hızlı turda değil, seyrek taranır
         b = blocked.get(site)
         if b and b["until"] > stamp:
             status[site] = {"urun": 0, "hatalar": [f"engel nedeniyle {b['until'][11:16]} UTC'ye kadar atlanıyor"]}
@@ -356,12 +361,14 @@ def loop(publish_enabled):
     Tek bir kilitle çalışır; Görev Zamanlayıcı'ya tek bir 'oturum açılınca başlat' görevi yeter."""
     log(f"döngü başladı (tam tur {LOOP_FULL_MIN} dk'da bir, yayın {LOOP_PUBLISH_MIN} dk'da bir)")
     last_full = last_publish = 0.0
+    cycle = 0
     while True:
+        cycle += 1
         started = time.time()
         LOCK_FILE.touch()  # kilit taze kalsın, başka bir kopya "çökmüş" sanıp devralmasın
         full = (started - last_full) / 60 >= LOOP_FULL_MIN
         try:
-            main(quick=not full)
+            main(quick=not full, cycle=cycle)
             if full:
                 last_full = started
             if publish_enabled and (started - last_publish) / 60 >= LOOP_PUBLISH_MIN and publish_deals():

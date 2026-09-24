@@ -235,6 +235,22 @@ açık sorular). Diğer laptopta yeni oturum açıldığında devam noktası bur
   - **Tablo varsayılanları değişti:** sıralama "Geçmiş" puanına göre (fiyat hatası > ani düşüş > 30g en düşük >
     en ucuz), min indirim %30 yerine %0. Sitenin iddia ettiği indirim çoğu gerçek fırsatta %0 olduğu için
     eski varsayılan iyi fırsatları gizliyordu.
+- **Sürekli döngü çalışıyor (2026-09-23/24 kontrolleri):** Masaüstünde "Indirim Takip Dongu" görevi,
+  tur ~2 dk, veri hem Drive'a hem GitHub'a gidiyor. Kurulumda iki sorun çıkıp düzeltildi:
+  (1) `Register-ScheduledTask` "Erişim engellendi" (0x80070005) - AtLogOn tetiği kullanıcı belirtilmeden
+  eklenince Windows yönetici istiyor; artık `-User` ile kaydediliyor, olmazsa sadece tekrarlayan tetik.
+  (2) Yarıda kesilen turdan kalan kilit yüzünden döngü hemen çıkıyordu; artık bekliyor, her turda kilidi
+  tazeliyor, 15 dk tazelenmemiş kilidi devralıyor.
+- **Değişken ilan tespiti güçlendirildi (2026-09-23):** Trendyol'da aynı ilanda farklı satıcı fiyatları
+  görünüyor (ör. Poco F8 Ultra 35.000 <-> 79.999, LG buzdolabı 106.999 <-> 50.000; hep yuvarlak rakamlar).
+  Bunlar "ani düşüş" listesinin tepesini dolduruyordu. Artık ardışık fiyatlarda **iki kez 1,5 kat sıçrama**
+  da `volatile` sayılıyor; volatile ilanlar ani düşüş / 30g en düşük rozetlerinden çıkarıldı ve
+  "Değişken ilan" etiketi alıyor. ~10.000 üründen ~45-60'ı böyle.
+- **Siteye özel tempo (2026-09-24):** İdefix 2 dk'lık döngüde birkaç kez engelledi (20/23/24 Eylül).
+  `SITE_PACE` eklendi: idefix `delay=6 sn`, `every=3` (hızlı turların üçte birinde; tam turlarda hep taranır).
+  Başka site engellemeye başlarsa aynı yere kayıt eklenmeli.
+- **Durum (24 Eylül 22:20):** 10.262 ürün geçmişte, tabloda 4.369; **3.343 üründe 7+ gün geçmiş** (rozetler
+  geniş çapta aktif); ani düşüş 64, değişken 39, siteler arası eşleşme ~700. Fiyat hatası (dip): hâlâ 0.
 - **Bekleme dönemi (2026-09-16'dan itibaren, kullanıcı kararı):** Veri birikmesi bekleniyor, yeni özellik eklenmiyor.
   Beklenen takvim: 2-3 gün "ani düşüş", 7 gün (~23 Eylül) "30 günün en düşüğü"/"sahte indirim", 1 ay gerçek 30g en düşük.
 - **Sıradaki adım (~19 Eylül ve ~23 Eylül):** Kullanıcıyla birlikte kontrol: masaüstü log'u

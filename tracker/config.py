@@ -156,3 +156,10 @@ HISTORY_DAYS = 180
 
 # Her site isteği arasında bekleme (saniye) - siteleri yormamak için.
 REQUEST_DELAY = 3
+
+# Siteye özel tempo. Sık engelleyen siteler için isteği seyrektir:
+#   delay -> istekler arası bekleme (saniye), every -> hızlı turların kaçta birinde taranır
+# İdefix 20-24 Eylül'de birkaç kez engelledi (2 dk'lık döngüde); bu yüzden seyrek ve yavaş.
+SITE_PACE = {
+    "idefix": {"delay": 6, "every": 3},
+}
